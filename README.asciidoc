@@ -1,6 +1,6 @@
 == Nagios Plugin JBossAS7 ==
 
-This project provides a Nagios plugin for JBossAS 7.1.1 resource monitoring. The plugin uses HTTP-JSON based API (JBossAS REST Management API) to collect server statistics. The plugin currently supports JBoss standalone mode.
+This project provides a Nagios plugin for Wildfly resource monitoring. The plugin uses HTTP-JSON based API (JBossAS REST Management API) to collect server statistics. The plugin supports standalone as well as domain mode.
 
 image::NagiosJBossAS7.jpg[]
 
@@ -9,8 +9,8 @@ The main advantage of this plugin is it leverages the +REST+ API of JBossAS. Thi
 
 === Requirements: ===
 * Nagios
-* Python 2.7 onwards (with +requests+ module used for digest authentication)
-* JBossAS 7.1.1-Final
+* Python 3 onwards (with +requests+ module used for digest authentication)
+* JBossAS 7.1, JBoss EAP 6 or Wildfly 8 onwards
 
 === Usage: ===
 
@@ -19,7 +19,7 @@ The check script supports following options. Details about monitoring different 
 [source,python]
 ----
 server:nagios-plugin-jbossas7 Aparna$ python check_jbossas7.py --help
-Usage: check_jbossas7.py [options]
+Usage: check_wildfly.py [options]
 
 This Nagios plugin checks the health of JBossAS.
 
@@ -28,6 +28,10 @@ Options:
   -H HOST, --host=HOST  The hostname you want to connect to
   -P PORT, --port=PORT  The port JBoss management console is runnung on
   -u USER, --user=USER  The username you want to login as
+  -m MODE, --mode=MODE  The mode the server is running (standalone or domain)
+  -n NODE, --node=NODE  The node if the server is running in domain mode
+  -i INSTANCE, --instance=INSTANCE
+                        The instance if the server is running in domain mode
   -p PASSWD, --pass=PASSWD
                         The password you want to use for that user
   -W WARNING, --warning=WARNING
@@ -50,6 +54,8 @@ Options:
   -t THREAD_STAT_TYPE, --threadstats=THREAD_STAT_TYPE
                         The threading statistics type
 ----
+
+If running in domain mode, connect to the domain controller.
 
 Currently the plugin supports monitoring of following resources and sub-systems.
 
