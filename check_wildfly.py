@@ -28,8 +28,8 @@ try:
 except ImportError:
     try:
         import simplejson as json
-    except ImportError, e:
-        print e
+    except ImportError as e:
+        print(e)
         sys.exit(2)
 
 
@@ -92,29 +92,29 @@ def check_levels(param, warning, critical, message, ok=[]):
     """
     if (numeric_type(critical) and numeric_type(warning)):
         if param >= critical:
-            print "CRITICAL - " + message
+            print("CRITICAL - " + message)
             sys.exit(2)
         elif param >= warning:
-            print "WARNING - " + message
+            prin( "WARNING - " + message)
             sys.exit(1)
         else:
-            print "OK - " + message
+            print("OK - " + message)
             sys.exit(0)
     else:
         if param in critical:
-            print "CRITICAL - " + message
+            print("CRITICAL - " + message)
             sys.exit(2)
 
         if param in warning:
-            print "WARNING - " + message
+            print("WARNING - " + message)
             sys.exit(1)
 
         if param in ok:
-            print "OK - " + message
+            print("OK - " + message)
             sys.exit(0)
 
         # unexpected param value
-        print "CRITICAL - Unexpected value : %d" % param + "; " + message
+        print("CRITICAL - Unexpected value : %d" % param + "; " + message)
         return 2
 
 
@@ -138,14 +138,14 @@ def get_digest_auth_json(host, port, uri, user, password, payload):
         try:    
             outcome = data['outcome']
             if outcome == "failed":
-                print "CRITICAL - Unexpected value : %s" % data
+                print("CRITICAL - Unexpected value : %s" % data)
                 sys.exit(2)
         except KeyError: pass
 
         return data
-    except Exception, e:
+    except Exception as e:
         # The server could be down; make this CRITICAL.
-        print "CRITICAL - JbossAS Error:", e
+        print("CRITICAL - JbossAS Error:", e)
         sys.exit(2)
 
 
@@ -170,14 +170,14 @@ def post_digest_auth_json(host, port, uri, user, password, payload):
         try:    
             outcome = data['outcome']
             if outcome == "failed":
-                print "CRITICAL - Unexpected value : %s" % data
+                print("CRITICAL - Unexpected value : %s" % data)
                 sys.exit(2)
         except KeyError: pass
 
         return data
-    except Exception, e:
+    except Exception as e:
         # The server could be down; make this CRITICAL.
-        print "CRITICAL - JbossAS Error:", e
+        print("CRITICAL - JbossAS Error:", e)
         sys.exit(2)
 
 
@@ -275,10 +275,10 @@ def exit_with_general_warning(e):
     if isinstance(e, SystemExit):
         return e
     elif isinstance(e, ValueError):
-        print "WARNING - General JbossAS Error:", e
+        print("WARNING - General JbossAS Error:", e)
         sys.exit(1)
     else:
-        print "WARNING - General JbossAS warning:", e
+        print("WARNING - General JbossAS warning:", e)
     return 1
 
 
@@ -286,10 +286,10 @@ def exit_with_general_critical(e):
     if isinstance(e, SystemExit):
         return e
     elif isinstance(e, ValueError):
-        print "CRITICAL - General JbossAS Error:", e
+        print("CRITICAL - General JbossAS Error:", e)
         sys.exit(2)
     else:
-        print "CRITICAL - General JbossAS Error:", e
+        print("CRITICAL - General JbossAS Error:", e)
     return 2
 
 
@@ -307,7 +307,7 @@ def check_server_status(host, port, user, passwd, warning, critical, perf_data):
         message += performance_data(perf_data, [(res, "server_status", warning, critical)])
     
         return check_levels(res, warning, critical, message, ok)
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 
@@ -324,7 +324,7 @@ def get_memory_usage(host, port, user, passwd, is_heap, memory_value):
             data = data['non-heap-memory-usage'][memory_value] / (1024 * 1024)
         
         return data
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 def check_heap_usage(host, port, user, passwd, warning, critical, perf_data):
@@ -340,7 +340,7 @@ def check_heap_usage(host, port, user, passwd, warning, critical, perf_data):
         message += performance_data(perf_data, [("%.2f%%" % percent, "heap_usage", warning, critical)])
     
         return check_levels(percent, warning, critical, message)
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 def check_non_heap_usage(host, port, user, passwd, warning, critical, perf_data):
@@ -356,7 +356,7 @@ def check_non_heap_usage(host, port, user, passwd, warning, critical, perf_data)
         message += performance_data(perf_data, [("%.2f%%" % percent, "non_heap_usage", warning, critical)])
     
         return check_levels(percent, warning, critical, message)
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 def get_memory_pool_usage(host, port, user, passwd, pool_name, memory_value):
@@ -368,7 +368,7 @@ def get_memory_pool_usage(host, port, user, passwd, pool_name, memory_value):
         usage = data['name'][pool_name]['usage'][memory_value] / (1024 * 1024)
         
         return usage
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 
@@ -385,7 +385,7 @@ def check_eden_space_usage(host, port, user, passwd, memory_pool, warning, criti
         message += performance_data(perf_data, [("%.2f%%" % percent, "eden_space_usage", warning, critical)])
     
         return check_levels(percent, warning, critical, message)
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 def check_old_gen_usage(host, port, user, passwd, memory_pool, warning, critical, perf_data):
@@ -401,7 +401,7 @@ def check_old_gen_usage(host, port, user, passwd, memory_pool, warning, critical
         message += performance_data(perf_data, [("%.2f%%" % percent, "old_gen_usage", warning, critical)])
     
         return check_levels(percent, warning, critical, message)
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 
@@ -418,7 +418,7 @@ def check_perm_gen_usage(host, port, user, passwd, memory_pool, warning, critica
         message += performance_data(perf_data, [("%.2f%%" % percent, "perm_gen_usage", warning, critical)])
     
         return check_levels(percent, warning, critical, message)
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 def check_code_cache_usage(host, port, user, passwd, memory_pool, warning, critical, perf_data):
@@ -426,9 +426,9 @@ def check_code_cache_usage(host, port, user, passwd, memory_pool, warning, criti
     critical = critical or 95
     
     try:
-    	if memory_pool == None:
-    		memory_pool = 'Code_Cache'
-    		
+        if memory_pool == None:
+            memory_pool = 'Code_Cache'
+        
         used_heap = get_memory_pool_usage(host, port, user, passwd, memory_pool, 'used')
         max_heap = get_memory_pool_usage(host, port, user, passwd, memory_pool, 'max')
         percent = round((float(used_heap * 100) / max_heap), 2)
@@ -437,7 +437,7 @@ def check_code_cache_usage(host, port, user, passwd, memory_pool, warning, criti
         message += performance_data(perf_data, [("%.2f%%" % percent, "code_cache_usage", warning, critical)])
     
         return check_levels(percent, warning, critical, message)
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 
@@ -462,7 +462,7 @@ def check_gctime(host, port, user, passwd, memory_pool, warning, critical, perf_
         message += performance_data(perf_data, [("%.2fms" % avg_gc_time, "gctime", warning, critical)])
     
         return check_levels(avg_gc_time, warning, critical, message)
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
     
 
@@ -484,7 +484,7 @@ def check_threading(host, port, user, passwd, thread_stat_type, warning, critica
         message += performance_data(perf_data, [(data, "threading", warning, critical)])
     
         return check_levels(data, warning, critical, message)
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 
@@ -506,7 +506,7 @@ def check_queue_depth(host, port, user, passwd, queue_name, warning, critical, p
         message += performance_data(perf_data, [(queue_depth, "queue_depth", warning, critical)])
     
         return check_levels(queue_depth, warning, critical, message)
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 def get_datasource_stats(host, port, user, passwd, is_xa, ds_name, ds_stat_type):
@@ -526,7 +526,7 @@ def get_datasource_stats(host, port, user, passwd, is_xa, ds_name, ds_stat_type)
         data = data[ds_stat_type]
         
         return data
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 
@@ -540,7 +540,7 @@ def check_non_xa_datasource(host, port, user, passwd, ds_name, ds_stat_type, war
         message = "DataSource %s %s" % (ds_stat_type, data)
         message += performance_data(perf_data, [(data, "datasource", warning, critical)])
         return check_levels(data, warning, critical, message)
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 def check_xa_datasource(host, port, user, passwd, ds_name, ds_stat_type, warning, critical, perf_data):
@@ -553,7 +553,7 @@ def check_xa_datasource(host, port, user, passwd, ds_name, ds_stat_type, warning
         message = "XA DataSource %s %s" % (ds_stat_type, data)
         message += performance_data(perf_data, [(data, "xa_datasource", warning, critical)])
         return check_levels(data, warning, critical, message)
-    except Exception, e:
+    except Exception as e:
         return exit_with_general_critical(e)
 
 def build_file_name(host, action):
@@ -572,7 +572,7 @@ def write_values(file_name, string):
     f = None
     try:
         f = open(file_name, 'w')
-    except IOError, e:
+    except IOError as e:
         # try creating
         if (e.errno == 2):
             ensure_dir(file_name)
@@ -591,11 +591,11 @@ def read_values(file_name):
         data = f.read()
         f.close()
         return 0, data
-    except IOError, e:
+    except IOError as e:
         if (e.errno == 2):
             # no previous data
             return 1, ''
-    except Exception, e:
+    except Exception as e:
         return 2, None
 
 
