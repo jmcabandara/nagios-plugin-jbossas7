@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 
 #
-# A JBossAS 7.1.1-Final Nagios check script
+# A Wildfly  Nagios check script
 #
 # https://github.com/mzupan/nagios-plugin-mongodb is used as a reference for this.
 
 #
 # Main Author
 #   - Aparna Chaudhary <aparna.chaudhary@gmail.com>
-# Version: 0.2
+#   - Gregor Tudan <gregor.tudan@cofinpro.de>
+# Version: 0.3
 #
 # USAGE
 #
@@ -32,7 +33,6 @@ except ImportError:
     except ImportError as e:
         print(e)
         sys.exit(2)
-
 
 
 #
@@ -119,17 +119,13 @@ def check_levels(param, warning, critical, message, ok=[]):
         return 2
 
 
-def get_digest_auth_json(host, port, uri, user, password, payload):
+def get_digest_auth_json(uri, payload):
     """
     HTTP GET with Digest Authentication. Returns JSON result.
     Base URI of http://{host}:{port}/management is used
     
-    :param host: JBossAS hostname
-    :param port: JBossAS HTTP Management Port
     :param uri: URL fragment
-    :param user: management username
-    :param password: password
-    :param payload: JSON payload 
+    :param payload: URL parameter payload
     """
     try:
         url = base_url(host, port) + uri
@@ -150,16 +146,12 @@ def get_digest_auth_json(host, port, uri, user, password, payload):
         sys.exit(2)
 
 
-def post_digest_auth_json(host, port, uri, user, password, payload):
+def post_digest_auth_json(uri, payload):
     """
     HTTP POST with Digest Authentication. Returns JSON result.
     Base URI of http://{host}:{port}/management is used
     
-    :param host: JBossAS hostname
-    :param port: JBossAS HTTP Management Port
     :param uri: URL fragment
-    :param user: management username
-    :param password: password
     :param payload: JSON payload 
     """
     try:
@@ -193,22 +185,29 @@ def base_url(host, port):
     return url
 
 def debug_log():
+    """
+    Enables request logging
+    """
+
     import http.client as http_client
     http_client.HTTPConnection.debuglevel = 1
     
-    # You must initialize logging, otherwise you'll not see debug output.
-    logging.basicConfig()
-    logging.getLogger().setLevel(logging.DEBUG)
     requests_log = logging.getLogger("requests.packages.urllib3")
     requests_log.setLevel(logging.DEBUG)
     requests_log.propagate = True
 
 def main(argv):
-    debug_log() 
+    logging.basicConfig()
+    logging.getLogger().setLevel(logging.ERROR)
+    # debug_log() 
     global ds_stat_types
     ds_stat_types = ['ActiveCount', 'AvailableCount', 'AverageBlockingTime', 'AverageCreationTime',
                      'CreatedCount', 'DestroyedCount', 'MaxCreationTime', 'MaxUsedCount',
                      'MaxWaitTime', 'TimedOut', 'TotalBlockingTime', 'TotalCreationTime']
+
+    actions = ['server_status', 'heap_usage', 'non_heap_usage', 'eden_space_usage',
+                'old_gen_usage', 'perm_gen_usage', 'code_cache_usage', 'gctime',
+                'queue_depth', 'datasource', 'xa_datasource', 'threading']
     
     p = optparse.OptionParser(conflict_handler="resolve", description="This Nagios plugin checks the health of JBossAS.")
 
@@ -221,10 +220,7 @@ def main(argv):
     p.add_option('-i', '--instance', action='store', type='string', dest='instance', default=None, help='The wildfly instance (server-config) to check (domain mode)')
     p.add_option('-W', '--warning', action='store', dest='warning', default=None, help='The warning threshold we want to set')
     p.add_option('-C', '--critical', action='store', dest='critical', default=None, help='The critical threshold we want to set')
-    p.add_option('-A', '--action', action='store', type='choice', dest='action', default='server_status', help='The action you want to take',
-                 choices=['server_status', 'heap_usage', 'non_heap_usage', 'eden_space_usage',
-                          'old_gen_usage', 'perm_gen_usage', 'code_cache_usage', 'gctime',
-                          'queue_depth', 'datasource', 'xa_datasource', 'threading'])
+    p.add_option('-A', '--action', action='store', type='choice', dest='action', default='server_status', help='The action you want to take', choices=actions)
     p.add_option('-D', '--perf-data', action='store_true', dest='perf_data', default=False, help='Enable output of Nagios performance data')
     p.add_option('-m', '--memorypool', action='store', dest='memory_pool', default=None, help='The memory pool type')
     p.add_option('-q', '--queuename', action='store', dest='queue_name', default=None, help='The queue name for which you want to retrieve queue depth')
@@ -232,14 +228,16 @@ def main(argv):
     p.add_option('-s', '--poolstats', action='store', dest='ds_stat_type', default=None, help='The datasource pool statistics type')
     p.add_option('-t', '--threadstats', action='store', dest='thread_stat_type', default=None, help='The threading statistics type')
 
+    global host, port, user, password, node, instance, is_domain
+
     options, arguments = p.parse_args()
     host = options.host
     port = options.port
-    mode = options.mode
     user = options.user
-    node = options.node
+    password = options.passwd
     instance = options.instance
-    passwd = options.passwd
+    node = options.node
+    mode = options.mode
     memory_pool = options.memory_pool
     queue_name = options.queue_name
     datasource_name = options.datasource_name
@@ -259,29 +257,29 @@ def main(argv):
     perf_data = options.perf_data
 
     if action == "server_status":
-        return check_server_status(host, port, user, passwd, is_domain, node, instance, warning, critical, perf_data)
+        return check_server_status(warning, critical, perf_data)
     elif action == "gctime":
-        return check_gctime(host, port, user, passwd, memory_pool, warning, critical, perf_data)
+        return check_gctime(memory_pool, warning, critical, perf_data)
     elif action == "queue_depth":
-        return check_queue_depth(host, port, user, passwd, is_domain, node, instance, queue_name, warning, critical, perf_data)
+        return check_queue_depth(queue_name, warning, critical, perf_data)
     elif action == "heap_usage":
-        return check_heap_usage(host, port, user, passwd, is_domain, node, instance, warning, critical, perf_data)
+        return check_heap_usage(warning, critical, perf_data)
     elif action == "non_heap_usage":
-        return check_non_heap_usage(host, port, user, passwd,is_domain, node, instance,  warning, critical, perf_data)
+        return check_non_heap_usage(warning, critical, perf_data)
     elif action == "eden_space_usage":
-        return check_eden_space_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, warning, critical, perf_data)
+        return check_eden_space_usage(memory_pool, warning, critical, perf_data)
     elif action == "old_gen_usage":
-        return check_old_gen_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, warning, critical, perf_data)
+        return check_old_gen_usage(memory_pool, warning, critical, perf_data)
     elif action == "perm_gen_usage":
-        return check_perm_gen_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, warning, critical, perf_data)
+        return check_perm_gen_usage(memory_pool, warning, critical, perf_data)
     elif action == "code_cache_usage":
-        return check_code_cache_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, warning, critical, perf_data)
+        return check_code_cache_usage(memory_pool, warning, critical, perf_data)
     elif action == "datasource":
-        return check_non_xa_datasource(host, port, user, passwd, is_domain, node, instance, datasource_name, ds_stat_type, warning, critical, perf_data)
+        return check_non_xa_datasource(datasource_name, ds_stat_type, warning, critical, perf_data)
     elif action == "xa_datasource":
-        return check_xa_datasource(host, port, user, passwd, is_domain, node, instance, datasource_name, ds_stat_type, warning, critical, perf_data)
+        return check_xa_datasource(datasource_name, ds_stat_type, warning, critical, perf_data)
     elif action == "threading":
-        return check_threading(host, port, user, passwd, is_domain, node, instance, thread_stat_type, warning, critical, perf_data)
+        return check_threading(thread_stat_type, warning, critical, perf_data)
     else:
         return 2
 
@@ -312,7 +310,7 @@ def exit_with_general_critical(e):
     return 2
 
 
-def check_server_status(host, port, user, passwd, is_domain, node, instance, warning, critical, perf_data):
+def check_server_status(warning, critical, perf_data):
     warning = warning or "reload-required"
     critical = critical or ""
     ok = "running"
@@ -322,7 +320,7 @@ def check_server_status(host, port, user, passwd, is_domain, node, instance, war
         payload = {'operation': 'read-attribute', 'name': 'server-state'}
         if is_domain:
             payload['address'] = [{'host': node}, {'server': instance}]
-        res = post_digest_auth_json(host, port, url, user, passwd, payload)
+        res = post_digest_auth_json(url, payload)
         res = res['result']
         
         message = "Server Status '%s'" % res
@@ -333,7 +331,7 @@ def check_server_status(host, port, user, passwd, is_domain, node, instance, war
         return exit_with_general_critical(e)
 
 
-def get_memory_usage(host, port, user, passwd, is_domain, node, instance, is_heap, memory_value):
+def get_memory_usage(is_heap, memory_value):
     try:
         payload = {'include-runtime': 'true'}
         url = "/core-service/platform-mbean/type/memory"
@@ -341,7 +339,7 @@ def get_memory_usage(host, port, user, passwd, is_domain, node, instance, is_hea
         if is_domain:
             url = '/host/{}/server/{}'.format(node, instance) + url
 
-        data = get_digest_auth_json(host, port, url, user, passwd, payload)
+        data = get_digest_auth_json(url, payload)
         
         if is_heap:
             data = data['heap-memory-usage'][memory_value] / (1024 * 1024)
@@ -352,13 +350,13 @@ def get_memory_usage(host, port, user, passwd, is_domain, node, instance, is_hea
     except Exception as e:
         return exit_with_general_critical(e)
 
-def check_heap_usage(host, port, user, passwd, is_domain, node, instance, warning, critical, perf_data):
+def check_heap_usage(warning, critical, perf_data):
     warning = warning or 80
     critical = critical or 90
     
     try:
-        used_heap = get_memory_usage(host, port, user, passwd, is_domain, node, instance, True, 'used')
-        max_heap = get_memory_usage(host, port, user, passwd, is_domain, node, instance, True, 'max')
+        used_heap = get_memory_usage(True, 'used')
+        max_heap = get_memory_usage(True, 'max')
         percent = round((float(used_heap * 100) / max_heap), 2)
         
         message = "Heap Memory Utilization %sMB of %sMB" % (used_heap, max_heap)
@@ -368,13 +366,13 @@ def check_heap_usage(host, port, user, passwd, is_domain, node, instance, warnin
     except Exception as e:
         return exit_with_general_critical(e)
 
-def check_non_heap_usage(host, port, user, passwd, is_domain, node, instance, warning, critical, perf_data):
+def check_non_heap_usage(warning, critical, perf_data):
     warning = warning or 80
     critical = critical or 90
     
     try:
-        used_heap = get_memory_usage(host, port, user, passwd, is_domain, node, instance, False, 'used')
-        max_heap = get_memory_usage(host, port, user, passwd, is_domain, node, instance, False, 'max')
+        used_heap = get_memory_usage(False, 'used')
+        max_heap = get_memory_usage(False, 'max')
         percent = round((float(used_heap * 100) / max_heap), 2)
         
         message = "Non Heap Memory Utilization %sMB of %sMB" % (used_heap, max_heap)
@@ -384,7 +382,7 @@ def check_non_heap_usage(host, port, user, passwd, is_domain, node, instance, wa
     except Exception as e:
         return exit_with_general_critical(e)
 
-def get_memory_pool_usage(host, port, user, passwd, is_domain, node, instance, pool_name, memory_value):
+def get_memory_pool_usage(pool_name, memory_value):
     try:
         payload = {'include-runtime': 'true', 'recursive':'true'}
         url = "/core-service/platform-mbean/type/memory-pool"
@@ -392,7 +390,7 @@ def get_memory_pool_usage(host, port, user, passwd, is_domain, node, instance, p
         if is_domain:
             url = '/host/{}/server/{}'.format(node, instance) + url
         
-        data = get_digest_auth_json(host, port, url, user, passwd, payload)
+        data = get_digest_auth_json(url, payload)
         usage = data['name'][pool_name]['usage'][memory_value] / (1024 * 1024)
         
         return usage
@@ -400,13 +398,13 @@ def get_memory_pool_usage(host, port, user, passwd, is_domain, node, instance, p
         return exit_with_general_critical(e)
 
 
-def check_eden_space_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, warning, critical, perf_data):
+def check_eden_space_usage(memory_pool, warning, critical, perf_data):
     warning = warning or 80
     critical = critical or 90
     
     try:
-        used_heap = get_memory_pool_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, 'used')
-        max_heap = get_memory_pool_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, 'max')
+        used_heap = get_memory_pool_usage(memory_pool, 'used')
+        max_heap = get_memory_pool_usage(instance, memory_pool, 'max')
         percent = round((float(used_heap * 100) / max_heap), 2)
         
         message = "Eden_Space Utilization %sMB of %sMB" % (used_heap, max_heap)
@@ -416,13 +414,13 @@ def check_eden_space_usage(host, port, user, passwd, is_domain, node, instance, 
     except Exception as e:
         return exit_with_general_critical(e)
 
-def check_old_gen_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, warning, critical, perf_data):
+def check_old_gen_usage(memory_pool, warning, critical, perf_data):
     warning = warning or 80
     critical = critical or 90
     
     try:
-        used_heap = get_memory_pool_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, 'used')
-        max_heap = get_memory_pool_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, 'max')
+        used_heap = get_memory_pool_usage(memory_pool, 'used')
+        max_heap = get_memory_pool_usage(memory_pool, 'max')
         percent = round((float(used_heap * 100) / max_heap), 2)
         
         message = "Old_Gen Utilization %sMB of %sMB" % (used_heap, max_heap)
@@ -433,13 +431,13 @@ def check_old_gen_usage(host, port, user, passwd, is_domain, node, instance, mem
         return exit_with_general_critical(e)
 
 
-def check_perm_gen_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, warning, critical, perf_data):
+def check_perm_gen_usage(memory_pool, warning, critical, perf_data):
     warning = warning or 90
     critical = critical or 95
     
     try:
-        used_heap = get_memory_pool_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, 'used')
-        max_heap = get_memory_pool_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, 'max')
+        used_heap = get_memory_pool_usage(memory_pool, 'used')
+        max_heap = get_memory_pool_usage(memory_pool, 'max')
         percent = round((float(used_heap * 100) / max_heap), 2)
         
         message = "Perm_Gen Utilization %sMB of %sMB" % (used_heap, max_heap)
@@ -449,7 +447,7 @@ def check_perm_gen_usage(host, port, user, passwd, is_domain, node, instance, me
     except Exception as e:
         return exit_with_general_critical(e)
 
-def check_code_cache_usage(host, port, user, passwd, is_domain, node, instance, memory_pool, warning, critical, perf_data):
+def check_code_cache_usage(memory_pool, warning, critical, perf_data):
     warning = warning or 90
     critical = critical or 95
     
@@ -457,8 +455,8 @@ def check_code_cache_usage(host, port, user, passwd, is_domain, node, instance, 
         if memory_pool == None:
             memory_pool = 'Code_Cache'
         
-        used_heap = get_memory_pool_usage(host, port, user, passwd, memory_pool, 'used')
-        max_heap = get_memory_pool_usage(host, port, user, passwd, memory_pool, 'max')
+        used_heap = get_memory_pool_usage(memory_pool, 'used')
+        max_heap = get_memory_pool_usage(memory_pool, 'max')
         percent = round((float(used_heap * 100) / max_heap), 2)
         
         message = "Code_Cache Utilization %sMB of %sMB" % (used_heap, max_heap)
@@ -469,7 +467,7 @@ def check_code_cache_usage(host, port, user, passwd, is_domain, node, instance, 
         return exit_with_general_critical(e)
 
 
-def check_gctime(host, port, user, passwd, is_domain, node, instance, memory_pool, warning, critical, perf_data):
+def check_gctime(memory_pool, warning, critical, perf_data):
     # Make sure you configure right values for your application    
     warning = warning or 500
     critical = critical or 1000
@@ -481,7 +479,7 @@ def check_gctime(host, port, user, passwd, is_domain, node, instance, memory_poo
         if is_domain:
             url = '/host/{}/server/{}'.format(node, instance) + url
         
-        res = get_digest_auth_json(host, port, url, user, passwd, payload)
+        res = get_digest_auth_json(url, payload)
         gc_time = res['name'][memory_pool]['collection-time']
         gc_count = res['name'][memory_pool]['collection-count']
         
@@ -498,7 +496,7 @@ def check_gctime(host, port, user, passwd, is_domain, node, instance, memory_poo
         return exit_with_general_critical(e)
     
 
-def check_threading(host, port, user, passwd, is_domain, node, instance, thread_stat_type, warning, critical, perf_data):
+def check_threading(thread_stat_type, warning, critical, perf_data):
     warning = warning or 100
     critical = critical or 200
     
@@ -512,7 +510,7 @@ def check_threading(host, port, user, passwd, is_domain, node, instance, thread_
         if is_domain:
             url = '/host/{}/server/{}'.format(node, instance) + url
 
-        data = get_digest_auth_json(host, port, url, user, passwd, payload)
+        data = get_digest_auth_json(url, payload)
         data = data[thread_stat_type]
         
         message = "Threading Statistics '%s':%s " % (thread_stat_type, data)
@@ -523,7 +521,7 @@ def check_threading(host, port, user, passwd, is_domain, node, instance, thread_
         return exit_with_general_critical(e)
 
 
-def check_queue_depth(host, port, user, passwd, is_domain, node, instance, queue_name, warning, critical, perf_data):
+def check_queue_depth(queue_name, warning, critical, perf_data):
     warning = warning or 100
     critical = critical or 200
     
@@ -533,8 +531,11 @@ def check_queue_depth(host, port, user, passwd, is_domain, node, instance, queue
             
         payload = {'include-runtime': 'true', 'recursive':'true'}
         url = "/subsystem/messaging/hornetq-server/default/jms-queue/" + queue_name
+
+        if is_domain:
+            url = '/host/{}/server/{}'.format(node, instance) + url
         
-        data = get_digest_auth_json(host, port, url, user, passwd, payload)
+        data = get_digest_auth_json(url, payload)
         queue_depth = data['message-count']
         
         message = "Queue %s depth %s" % (queue_name, queue_depth)
@@ -544,7 +545,7 @@ def check_queue_depth(host, port, user, passwd, is_domain, node, instance, queue
     except Exception as e:
         return exit_with_general_critical(e)
 
-def get_datasource_stats(host, port, user, passwd, is_domain, node, instance, is_xa, ds_name, ds_stat_type):
+def get_datasource_stats(is_xa, ds_name, ds_stat_type):
     try:    
         if ds_name is None:
             return exit_with_general_critical("The ds_name name '%s' is not valid" % ds_name)
@@ -560,7 +561,7 @@ def get_datasource_stats(host, port, user, passwd, is_domain, node, instance, is
         if is_domain:
             url = '/host/{}/server/{}'.format(node, instance) + url
 
-        data = get_digest_auth_json(host, port, url, user, passwd, payload)
+        data = get_digest_auth_json(url, payload)
         data = data[ds_stat_type]
         
         return data
@@ -568,12 +569,12 @@ def get_datasource_stats(host, port, user, passwd, is_domain, node, instance, is
         return exit_with_general_critical(e)
 
 
-def check_non_xa_datasource(host, port, user, passwd, is_domain, node, instance, ds_name, ds_stat_type, warning, critical, perf_data):
+def check_non_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data):
     warning = warning or 0
     critical = critical or 10
     
     try:    
-        data = get_datasource_stats(host, port, user, passwd, is_domain, node, instance, False, ds_name, ds_stat_type)
+        data = get_datasource_stats(False, ds_name, ds_stat_type)
         
         message = "DataSource %s %s" % (ds_stat_type, data)
         message += performance_data(perf_data, [(data, "datasource", warning, critical)])
@@ -581,12 +582,12 @@ def check_non_xa_datasource(host, port, user, passwd, is_domain, node, instance,
     except Exception as e:
         return exit_with_general_critical(e)
 
-def check_xa_datasource(host, port, user, passwd, is_domain, node, instance, ds_name, ds_stat_type, warning, critical, perf_data):
+def check_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data):
     warning = warning or 0
     critical = critical or 10
     
     try:    
-        data = get_datasource_stats(host, port, user, passwd, is_domain, node, instance, True, ds_name, ds_stat_type)
+        data = get_datasource_stats(True, ds_name, ds_stat_type)
 
         message = "XA DataSource %s %s" % (ds_stat_type, data)
         message += performance_data(perf_data, [(data, "xa_datasource", warning, critical)])
