@@ -16,7 +16,7 @@ The main advantage of this plugin is it leverages the +REST+ API of JBossAS. Thi
 
 The check script supports following options. Details about monitoring different resources is available in respective sub-sections.
 
-[source,python]
+[source,shell]
 ----
 server:nagios-plugin-jbossas7 Aparna$ python check_jbossas7.py --help
 Usage: check_wildfly.py [options]
