@@ -27,7 +27,7 @@ import time
 import requests
 from requests.auth import HTTPDigestAuth
 
-connection_config = dict({
+CONFIG = dict({
     "host": "localhost",
     "port": 9990,
     "user": None,
@@ -37,11 +37,11 @@ connection_config = dict({
     "instance": None,
 })
 
-ds_stat_types = ['ActiveCount', 'AvailableCount', 'AverageBlockingTime', 'AverageCreationTime',
+DS_STAT_TYPES = ['ActiveCount', 'AvailableCount', 'AverageBlockingTime', 'AverageCreationTime',
                  'CreatedCount', 'DestroyedCount', 'MaxCreationTime', 'MaxUsedCount',
                  'MaxWaitTime', 'TimedOut', 'TotalBlockingTime', 'TotalCreationTime']
 
-actions = ['server_status', 'heap_usage', 'non_heap_usage', 'eden_space_usage',
+ACTIONS = ['server_status', 'heap_usage', 'non_heap_usage', 'eden_space_usage',
            'old_gen_usage', 'perm_gen_usage', 'code_cache_usage', 'gctime',
            'queue_depth', 'datasource', 'xa_datasource', 'threading']
 
@@ -143,8 +143,8 @@ def get_digest_auth_json(uri, payload):
     :param payload: URL parameter payload
     """
     try:
-        url = base_url(connection_config['host'], connection_config['port']) + uri
-        auth = HTTPDigestAuth(connection_config['user'], connection_config['password'])
+        url = base_url(CONFIG['host'], CONFIG['port']) + uri
+        auth = HTTPDigestAuth(CONFIG['user'], CONFIG['password'])
         res = requests.get(url, params=payload, auth=auth)
         data = res.json()
 
@@ -172,9 +172,9 @@ def post_digest_auth_json(uri, payload):
     :param payload: JSON payload 
     """
     try:
-        url = base_url(connection_config['host'], connection_config['port']) + uri
+        url = base_url(CONFIG['host'], CONFIG['port']) + uri
         headers = {'content-type': 'application/json'}
-        auth = HTTPDigestAuth(connection_config['user'], connection_config['password'])
+        auth = HTTPDigestAuth(CONFIG['user'], CONFIG['password'])
         res = requests.post(url, data=json.dumps(payload), headers=headers, auth=auth)
         data = res.json()
 
@@ -223,8 +223,6 @@ def main():
     logging.getLogger().setLevel(logging.ERROR)
     # debug_log()
 
-
-
     p = optparse.OptionParser(conflict_handler="resolve",
                               description="This Nagios plugin checks the health of JBossAS.")
 
@@ -247,7 +245,7 @@ def main():
     p.add_option('-C', '--critical', action='store', dest='critical', default=None,
                  help='The critical threshold we want to set')
     p.add_option('-A', '--action', action='store', type='choice', dest='action', default='server_status',
-                 help='The action you want to take', choices=actions)
+                 help='The action you want to take', choices=ACTIONS)
     p.add_option('-D', '--perf-data', action='store_true', dest='perf_data', default=False,
                  help='Enable output of Nagios performance data')
     p.add_option('-m', '--memorypool', action='store', dest='memory_pool', default=None, help='The memory pool type')
@@ -261,13 +259,13 @@ def main():
                  help='The threading statistics type')
 
     options, arguments = p.parse_args()
-    connection_config['host'] = options.host
-    connection_config['port'] = options.port
-    connection_config['user'] = options.user
-    connection_config['password'] = options.passwd
-    connection_config['instance'] = options.instance
-    connection_config['node'] = options.node
-    connection_config['mode'] = options.mode
+    CONFIG['host'] = options.host
+    CONFIG['port'] = options.port
+    CONFIG['user'] = options.user
+    CONFIG['password'] = options.passwd
+    CONFIG['instance'] = options.instance
+    CONFIG['node'] = options.node
+    CONFIG['mode'] = options.mode
 
     memory_pool = options.memory_pool
     queue_name = options.queue_name
@@ -314,7 +312,7 @@ def main():
 
 
 def is_domain():
-    return connection_config['mode'] == 'domain'
+    return CONFIG['mode'] == 'domain'
 
 
 def exit_with_general_warning(e):
@@ -352,7 +350,7 @@ def check_server_status(warning, critical, perf_data):
         url = ''
         payload = {'operation': 'read-attribute', 'name': 'server-state'}
         if is_domain():
-            payload['address'] = [{'host': connection_config['node']}, {'server': connection_config['instance']}]
+            payload['address'] = [{'host': CONFIG['node']}, {'server': CONFIG['instance']}]
         res = post_digest_auth_json(url, payload)
         res = res['result']
 
@@ -370,7 +368,7 @@ def get_memory_usage(is_heap, memory_value):
         url = "/core-service/platform-mbean/type/memory"
 
         if is_domain():
-            url = '/host/{}/server/{}'.format(connection_config['node'], connection_config['instance']) + url
+            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
         data = get_digest_auth_json(url, payload)
 
@@ -424,7 +422,7 @@ def get_memory_pool_usage(pool_name, memory_value):
         url = "/core-service/platform-mbean/type/memory-pool"
 
         if is_domain():
-            url = '/host/{}/server/{}'.format(connection_config['node'], connection_config['instance']) + url
+            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
         data = get_digest_auth_json(url, payload)
         usage = data['name'][pool_name]['usage'][memory_value] / (1024 * 1024)
@@ -490,7 +488,7 @@ def check_code_cache_usage(memory_pool, warning, critical, perf_data):
     critical = critical or 95
 
     try:
-        if memory_pool == None:
+        if memory_pool is None:
             memory_pool = 'Code_Cache'
 
         used_heap = get_memory_pool_usage(memory_pool, 'used')
@@ -515,7 +513,7 @@ def check_gctime(memory_pool, warning, critical, perf_data):
         url = "/core-service/platform-mbean/type/garbage-collector"
 
         if is_domain():
-            url = '/host/{}/server/{}'.format(connection_config['node'], connection_config['instance']) + url
+            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
         res = get_digest_auth_json(url, payload)
         gc_time = res['name'][memory_pool]['collection-time']
@@ -548,7 +546,7 @@ def check_threading(thread_stat_type, warning, critical, perf_data):
         url = "/core-service/platform-mbean/type/threading"
 
         if is_domain():
-            url = '/host/{}/server/{}'.format(connection_config['node'], connection_config['instance']) + url
+            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
         data = get_digest_auth_json(url, payload)
         data = data[thread_stat_type]
@@ -573,7 +571,7 @@ def check_queue_depth(queue_name, warning, critical, perf_data):
         url = "/subsystem/messaging/hornetq-server/default/jms-queue/" + queue_name
 
         if is_domain():
-            url = '/host/{}/server/{}'.format(connection_config['node'], connection_config['instance']) + url
+            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
         data = get_digest_auth_json(url, payload)
         queue_depth = data['message-count']
@@ -590,7 +588,7 @@ def get_datasource_stats(is_xa, ds_name, ds_stat_type):
     try:
         if ds_name is None:
             return exit_with_general_critical("The ds_name name '%s' is not valid" % ds_name)
-        if ds_stat_type not in ds_stat_types:
+        if ds_stat_type not in DS_STAT_TYPES:
             return exit_with_general_critical("The datasource statistics type of '%s' is not valid" % ds_stat_type)
 
         payload = {'include-runtime': 'true', 'recursive': 'true'}
@@ -600,7 +598,7 @@ def get_datasource_stats(is_xa, ds_name, ds_stat_type):
             url = "/subsystem/datasources/data-source/" + ds_name + "/statistics/pool/"
 
         if is_domain():
-            url = '/host/{}/server/{}'.format(connection_config['node'], connection_config['instance']) + url
+            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
         data = get_digest_auth_json(url, payload)
         data = data[ds_stat_type]
@@ -675,7 +673,7 @@ def read_values(file_name):
         if e.errno == 2:
             # no previous data
             return 1, ''
-    except Exception as e:
+    except Exception:
         return 2, None
 
 
@@ -699,7 +697,7 @@ def maintain_delta(new_vals, host, action):
     delta = None
     try:
         err, delta = calc_delta(old_vals, new_vals)
-    except:
+    except Exception:
         err = 2
     write_res = write_values(file_name, ";".join(str(x) for x in new_vals))
     return err + write_res, delta
