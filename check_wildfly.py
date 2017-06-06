@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 
-#
-# A Wildfly  Nagios check script
-#
-# https://github.com/mzupan/nagios-plugin-mongodb is used as a reference for this.
+""" 
+A Nagios script for checking Wildfly/JBossAS over HTTP
 
-#
-# Main Author
-#   - Aparna Chaudhary <aparna.chaudhary@gmail.com>
-#   - Gregor Tudan <gregor.tudan@cofinpro.de>
-# Version: 0.3
-#
-# USAGE
-#
-# See the README.asciidoc
-#
+ Main Author
+   - Aparna Chaudhary <aparna.chaudhary@gmail.com>
+   - Gregor Tudan <gregor.tudan@cofinpro.de>
+
+USAGE
+
+See the README.asciidoc
+
+"""
 
 import json
 import logging
@@ -109,28 +106,28 @@ def check_levels(param, warning, critical, message, ok=None):
     if numeric_type(critical) and numeric_type(warning):
         if param >= critical:
             print("CRITICAL - " + message)
-            sys.exit(2)
+            return 2
         elif param >= warning:
             print("WARNING - " + message)
-            sys.exit(1)
+            return 1
         else:
             print("OK - " + message)
-            sys.exit(0)
+            return 0
     else:
         if param in critical:
             print("CRITICAL - " + message)
-            sys.exit(2)
+            return 2
 
         if param in warning:
             print("WARNING - " + message)
-            sys.exit(1)
+            return 1
 
         if param in ok:
             print("OK - " + message)
-            sys.exit(0)
+            return 0
 
         # unexpected param value
-        print("CRITICAL - Unexpected value : %d" % param + "; " + message)
+        print("CRITICAL - Unexpected value : %s" % param + "; " + message)
         return 2
 
 
@@ -267,48 +264,50 @@ def main():
     CONFIG['node'] = options.node
     CONFIG['mode'] = options.mode
 
-    memory_pool = options.memory_pool
-    queue_name = options.queue_name
-    datasource_name = options.datasource_name
-    ds_stat_type = options.ds_stat_type
-    thread_stat_type = options.thread_stat_type
+    args = {
+        'perf_data': options.perf_data,
+        'queue_name:': options.queue_name,
+        'memory_pool': options.memory_pool,
+        'datasource_name': options.datasource_name,
+        'ds_stat_type': options.ds_stat_type,
+        'thread_stat_type': options.thread_stat_type
+    }
 
     if options.action == 'server_status':
-        warning = str(options.warning or "")
-        critical = str(options.critical or "")
+        args['warning'] = str(options.warning or "")
+        args['critical'] = str(options.critical or "")
     else:
-        warning = float(options.warning or 0)
-        critical = float(options.critical or 0)
+        args['warning'] = float(options.warning or 0)
+        args['critical'] = float(options.critical or 0)
 
     action = options.action
-    perf_data = options.perf_data
-
     if action == "server_status":
-        return check_server_status(warning, critical, perf_data)
+        result = check_server_status(**args)
     elif action == "gctime":
-        return check_gctime(memory_pool, warning, critical, perf_data)
+        result = check_gctime(**args)
     elif action == "queue_depth":
-        return check_queue_depth(queue_name, warning, critical, perf_data)
+        result = check_queue_depth(**args)
     elif action == "heap_usage":
-        return check_heap_usage(warning, critical, perf_data)
+        result = check_heap_usage(**args)
     elif action == "non_heap_usage":
-        return check_non_heap_usage(warning, critical, perf_data)
+        result = check_non_heap_usage(**args)
     elif action == "eden_space_usage":
-        return check_eden_space_usage(memory_pool, warning, critical, perf_data)
+        result = check_eden_space_usage(**args)
     elif action == "old_gen_usage":
-        return check_old_gen_usage(memory_pool, warning, critical, perf_data)
+        result = check_old_gen_usage(**args)
     elif action == "perm_gen_usage":
-        return check_perm_gen_usage(memory_pool, warning, critical, perf_data)
+        result = check_perm_gen_usage(**args)
     elif action == "code_cache_usage":
-        return check_code_cache_usage(memory_pool, warning, critical, perf_data)
+        result = check_code_cache_usage(**args)
     elif action == "datasource":
-        return check_non_xa_datasource(datasource_name, ds_stat_type, warning, critical, perf_data)
+        result = check_non_xa_datasource(**args)
     elif action == "xa_datasource":
-        return check_xa_datasource(datasource_name, ds_stat_type, warning, critical, perf_data)
+        result = check_xa_datasource(**args)
     elif action == "threading":
-        return check_threading(thread_stat_type, warning, critical, perf_data)
+        result = check_threading(**args)
     else:
-        return 2
+        result = 2
+    sys.exit(result)
 
 
 def is_domain():
@@ -322,36 +321,30 @@ def exit_with_general_warning(e):
     """
     if isinstance(e, SystemExit):
         return e
-    elif isinstance(e, ValueError):
-        print("WARNING - General JbossAS Error:", e)
-        sys.exit(1)
     else:
         print("WARNING - General JbossAS warning:", e)
-    return 1
+        return 1
 
 
 def exit_with_general_critical(e):
     if isinstance(e, SystemExit):
         return e
-    elif isinstance(e, ValueError):
-        print("CRITICAL - General JbossAS Error:", e)
-        sys.exit(2)
     else:
         print("CRITICAL - General JbossAS Error:", e)
-    return 2
+        return 2
 
 
-def check_server_status(warning, critical, perf_data):
-    warning = warning or "reload-required"
-    critical = critical or ""
+def check_server_status(warning=None, critical="", perf_data=None, **kwargs):
     ok = ["running"]
+    warning = warning or ["restart-required", "reload-required"]
 
     try:
         url = ''
         payload = {'operation': 'read-attribute', 'name': 'server-state'}
         if is_domain():
-            payload['address'] = [{'host': CONFIG['node']}, {'server': CONFIG['instance']}]
-        res = post_digest_auth_json(url, payload)
+            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
+
+        res = get_digest_auth_json(url, payload)
         res = res['result']
 
         message = "Server Status '%s'" % res
@@ -362,7 +355,7 @@ def check_server_status(warning, critical, perf_data):
         return exit_with_general_critical(e)
 
 
-def get_memory_usage(is_heap, memory_value):
+def get_memory_usage(is_heap, memory_value, **kwargs):
     try:
         payload = {'include-runtime': 'true'}
         url = "/core-service/platform-mbean/type/memory"
@@ -382,7 +375,7 @@ def get_memory_usage(is_heap, memory_value):
         return exit_with_general_critical(e)
 
 
-def check_heap_usage(warning, critical, perf_data):
+def check_heap_usage(warning, critical, perf_data, **kwargs):
     warning = warning or 80
     critical = critical or 90
 
@@ -399,7 +392,7 @@ def check_heap_usage(warning, critical, perf_data):
         return exit_with_general_critical(e)
 
 
-def check_non_heap_usage(warning, critical, perf_data):
+def check_non_heap_usage(warning, critical, perf_data, **kwargs):
     warning = warning or 80
     critical = critical or 90
 
@@ -416,7 +409,7 @@ def check_non_heap_usage(warning, critical, perf_data):
         return exit_with_general_critical(e)
 
 
-def get_memory_pool_usage(pool_name, memory_value):
+def get_memory_pool_usage(pool_name, memory_value, **kwargs):
     try:
         payload = {'include-runtime': 'true', 'recursive': 'true'}
         url = "/core-service/platform-mbean/type/memory-pool"
@@ -432,7 +425,7 @@ def get_memory_pool_usage(pool_name, memory_value):
         return exit_with_general_critical(e)
 
 
-def check_eden_space_usage(memory_pool, warning, critical, perf_data):
+def check_eden_space_usage(memory_pool, warning, critical, perf_data, **kwargs):
     warning = warning or 80
     critical = critical or 90
 
@@ -449,7 +442,7 @@ def check_eden_space_usage(memory_pool, warning, critical, perf_data):
         return exit_with_general_critical(e)
 
 
-def check_old_gen_usage(memory_pool, warning, critical, perf_data):
+def check_old_gen_usage(memory_pool, warning, critical, perf_data, **kwargs):
     warning = warning or 80
     critical = critical or 90
 
@@ -466,7 +459,7 @@ def check_old_gen_usage(memory_pool, warning, critical, perf_data):
         return exit_with_general_critical(e)
 
 
-def check_perm_gen_usage(memory_pool, warning, critical, perf_data):
+def check_perm_gen_usage(memory_pool, warning, critical, perf_data, **kwargs):
     warning = warning or 90
     critical = critical or 95
 
@@ -483,7 +476,7 @@ def check_perm_gen_usage(memory_pool, warning, critical, perf_data):
         return exit_with_general_critical(e)
 
 
-def check_code_cache_usage(memory_pool, warning, critical, perf_data):
+def check_code_cache_usage(memory_pool, warning, critical, perf_data, **kwargs):
     warning = warning or 90
     critical = critical or 95
 
@@ -503,7 +496,7 @@ def check_code_cache_usage(memory_pool, warning, critical, perf_data):
         return exit_with_general_critical(e)
 
 
-def check_gctime(memory_pool, warning, critical, perf_data):
+def check_gctime(memory_pool, warning, critical, perf_data, **kwargs):
     # Make sure you configure right values for your application    
     warning = warning or 500
     critical = critical or 1000
@@ -532,7 +525,7 @@ def check_gctime(memory_pool, warning, critical, perf_data):
         return exit_with_general_critical(e)
 
 
-def check_threading(thread_stat_type, warning, critical, perf_data):
+def check_threading(thread_stat_type, warning, critical, perf_data, **kwargs):
     warning = warning or 100
     critical = critical or 200
 
@@ -559,7 +552,7 @@ def check_threading(thread_stat_type, warning, critical, perf_data):
         return exit_with_general_critical(e)
 
 
-def check_queue_depth(queue_name, warning, critical, perf_data):
+def check_queue_depth(queue_name, warning, critical, perf_data, **kwargs):
     warning = warning or 100
     critical = critical or 200
 
@@ -608,7 +601,7 @@ def get_datasource_stats(is_xa, ds_name, ds_stat_type):
         return exit_with_general_critical(e)
 
 
-def check_non_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data):
+def check_non_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data, **kwargs):
     warning = warning or 0
     critical = critical or 10
 
@@ -622,7 +615,7 @@ def check_non_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data)
         return exit_with_general_critical(e)
 
 
-def check_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data):
+def check_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data, **kwargs):
     warning = warning or 0
     critical = critical or 10
 

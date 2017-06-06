@@ -1,0 +1,5 @@
+requests
+
+# Testing
+pytest
+requests_mock
