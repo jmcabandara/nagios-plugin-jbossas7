@@ -1,3 +1,5 @@
+image:https://travis-ci.org/gtudan/nagios-plugin-wildlfy.svg?branch=master["Build Status", link="https://travis-ci.org/gtudan/nagios-plugin-wildlfy"]
+
 == Nagios Plugin Wildfly ==
 
 This project provides a Nagios plugin for Wildfly resource monitoring. The plugin uses HTTP-JSON based API (JBossAS REST Management API) to collect server statistics. The plugin supports standalone as well as domain mode.
