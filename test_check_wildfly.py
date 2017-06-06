@@ -45,6 +45,14 @@ def test_check_status_critical(requests):
     assert result == 2
 
 
+def test_performance_data(requests, capsys):
+    requests.get(BASE_URL + '?operation=read-attribute&name=server-state',
+                 text='{"result":"running"}')
+    wf.check_server_status(perf_data=True)
+    out, err = capsys.readouterr()
+    assert '|server_status=running;' in str(out)
+
+
 def test_check_status_with_domain(requests):
     wf.CONFIG['mode'] = 'domain'
     wf.CONFIG['node'] = 'master'
@@ -53,3 +61,6 @@ def test_check_status_with_domain(requests):
                  text='{"result":"running"}')
     result = wf.check_server_status()
     assert result == 0
+
+
+
