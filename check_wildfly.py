@@ -59,20 +59,20 @@ def _optional_arg(arg_default):
 # TODO: Document
 #
 def _performance_data(perf_data, params):
-    data = ''
-    if perf_data:
-        data = " |"
-        for p in params:
-            p += (None, None, None, None)
-            param, param_name, warning, critical = p[0:4]
-            data += "%s=%s" % (param_name, str(param))
-            if warning or critical:
-                warning = warning or 0
-                critical = critical or 0
-                data += ";%s;%s" % (warning, critical)
+    if not perf_data:
+        return ''
 
-            data += " "
+    data = " |"
+    for param in params:
+        param += (None, None, None, None)
+        param_value, param_name, warning, critical = param[0:4]
+        data += "%s=%s" % (param_name, str(param_value))
+        if warning or critical:
+            warning = warning or 0
+            critical = critical or 0
+            data += ";%s;%s" % (warning, critical)
 
+        data += " "
     return data
 
 
@@ -83,9 +83,7 @@ def _numeric_type(param):
     
     :param param: input param to check
     """
-    if type(param) == float or type(param) == int or param is None:
-        return True
-    return False
+    return type(param) == float or type(param) == int or param is None
 
 
 def _check_levels(param, warning, critical, message, ok=None):
@@ -151,9 +149,9 @@ def _get_digest_auth_json(uri, payload):
             pass
 
         return data
-    except Exception as e:
+    except Exception as exc:
         # The server could be down; make this CRITICAL.
-        print("CRITICAL - JbossAS Error:", e)
+        print("CRITICAL - JbossAS Error:", exc)
         sys.exit(2)
 
 
@@ -181,9 +179,9 @@ def _post_digest_auth_json(uri, payload):
             pass
 
         return data
-    except Exception as e:
+    except Exception as exc:
         # The server could be down; make this CRITICAL.
-        print("CRITICAL - JbossAS Error:", e)
+        print("CRITICAL - JbossAS Error:", exc)
         sys.exit(2)
 
 
@@ -194,9 +192,7 @@ def _base_url(host, port):
     :param host: JBossAS hostname
     :param port: JBossAS HTTP Management Port
     """
-    return "http://{host}:{port}/management".format(
-        host=host,
-        port=port)
+    return "http://{host}:{port}/management".format(host=host, port=port)
 
 
 def _debug_log():
@@ -311,24 +307,24 @@ def _is_domain():
     return CONFIG['mode'] == 'domain'
 
 
-def _exit_with_general_warning(e):
+def _exit_with_general_warning(exc):
     """
     
-    :param e: exception
+    :param exc: exception
     """
-    if isinstance(e, SystemExit):
-        return e
-    else:
-        print("WARNING - General JbossAS warning:", e)
-        return 1
+    if isinstance(exc, SystemExit):
+        return exc
+
+    print("WARNING - General JbossAS warning:", exc)
+    return 1
 
 
-def _exit_with_general_critical(e):
-    if isinstance(e, SystemExit):
-        return e
-    else:
-        print("CRITICAL - General JbossAS Error:", e)
-        return 2
+def _exit_with_general_critical(exc):
+    if isinstance(exc, SystemExit):
+        return exc
+
+    print("CRITICAL - General JbossAS Error:", exc)
+    return 2
 
 
 def check_server_status(warning=None, critical="", perf_data=None, **kwargs):
@@ -348,8 +344,8 @@ def check_server_status(warning=None, critical="", perf_data=None, **kwargs):
         message += _performance_data(perf_data, [(res, "server_status", warning, critical)])
 
         return _check_levels(res, warning, critical, message, ok)
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def get_memory_usage(is_heap, memory_value, **kwargs):
@@ -368,8 +364,8 @@ def get_memory_usage(is_heap, memory_value, **kwargs):
             data = data['non-heap-memory-usage'][memory_value] / (1024 * 1024)
 
         return data
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def check_heap_usage(warning, critical, perf_data, **kwargs):
@@ -385,8 +381,8 @@ def check_heap_usage(warning, critical, perf_data, **kwargs):
         message += _performance_data(perf_data, [("%.2f%%" % percent, "heap_usage", warning, critical)])
 
         return _check_levels(percent, warning, critical, message)
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def check_non_heap_usage(warning, critical, perf_data, **kwargs):
@@ -402,8 +398,8 @@ def check_non_heap_usage(warning, critical, perf_data, **kwargs):
         message += _performance_data(perf_data, [("%.2f%%" % percent, "non_heap_usage", warning, critical)])
 
         return _check_levels(percent, warning, critical, message)
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def get_memory_pool_usage(pool_name, memory_value, **kwargs):
@@ -418,8 +414,8 @@ def get_memory_pool_usage(pool_name, memory_value, **kwargs):
         usage = data['name'][pool_name]['usage'][memory_value] / (1024 * 1024)
 
         return usage
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def check_eden_space_usage(memory_pool, warning, critical, perf_data, **kwargs):
@@ -435,8 +431,8 @@ def check_eden_space_usage(memory_pool, warning, critical, perf_data, **kwargs):
         message += _performance_data(perf_data, [("%.2f%%" % percent, "eden_space_usage", warning, critical)])
 
         return _check_levels(percent, warning, critical, message)
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def check_old_gen_usage(memory_pool, warning, critical, perf_data, **kwargs):
@@ -452,8 +448,8 @@ def check_old_gen_usage(memory_pool, warning, critical, perf_data, **kwargs):
         message += _performance_data(perf_data, [("%.2f%%" % percent, "old_gen_usage", warning, critical)])
 
         return _check_levels(percent, warning, critical, message)
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def check_perm_gen_usage(memory_pool, warning, critical, perf_data, **kwargs):
@@ -469,8 +465,8 @@ def check_perm_gen_usage(memory_pool, warning, critical, perf_data, **kwargs):
         message += _performance_data(perf_data, [("%.2f%%" % percent, "perm_gen_usage", warning, critical)])
 
         return _check_levels(percent, warning, critical, message)
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def check_code_cache_usage(memory_pool, warning, critical, perf_data, **kwargs):
@@ -489,8 +485,8 @@ def check_code_cache_usage(memory_pool, warning, critical, perf_data, **kwargs):
         message += _performance_data(perf_data, [("%.2f%%" % percent, "code_cache_usage", warning, critical)])
 
         return _check_levels(percent, warning, critical, message)
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def check_gctime(memory_pool, warning, critical, perf_data, **kwargs):
@@ -518,8 +514,8 @@ def check_gctime(memory_pool, warning, critical, perf_data, **kwargs):
         message += _performance_data(perf_data, [("%.2fms" % avg_gc_time, "gctime", warning, critical)])
 
         return _check_levels(avg_gc_time, warning, critical, message)
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def check_threading(thread_stat_type, warning, critical, perf_data, **kwargs):
@@ -545,8 +541,8 @@ def check_threading(thread_stat_type, warning, critical, perf_data, **kwargs):
         message += _performance_data(perf_data, [(data, "threading", warning, critical)])
 
         return _check_levels(data, warning, critical, message)
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def check_queue_depth(queue_name, warning, critical, perf_data, **kwargs):
@@ -570,8 +566,8 @@ def check_queue_depth(queue_name, warning, critical, perf_data, **kwargs):
         message += _performance_data(perf_data, [(queue_depth, "queue_depth", warning, critical)])
 
         return _check_levels(queue_depth, warning, critical, message)
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def get_datasource_stats(is_xa, ds_name, ds_stat_type):
@@ -594,8 +590,8 @@ def get_datasource_stats(is_xa, ds_name, ds_stat_type):
         data = data[ds_stat_type]
 
         return data
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def check_non_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data, **kwargs):
@@ -608,8 +604,8 @@ def check_non_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data,
         message = "DataSource %s %s" % (ds_stat_type, data)
         message += _performance_data(perf_data, [(data, "datasource", warning, critical)])
         return _check_levels(data, warning, critical, message)
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 
 def check_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data, **kwargs):
@@ -622,8 +618,8 @@ def check_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data, **k
         message = "XA DataSource %s %s" % (ds_stat_type, data)
         message += _performance_data(perf_data, [(data, "xa_datasource", warning, critical)])
         return _check_levels(data, warning, critical, message)
-    except Exception as e:
-        return _exit_with_general_critical(e)
+    except Exception as exc:
+        return _exit_with_general_critical(exc)
 
 #
 # main app

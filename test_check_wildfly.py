@@ -31,7 +31,7 @@ def test_check_status_warning_on_restart(requests):
     assert result == 1
 
 
-def tech_check_status_warning_on_reload(requests):
+def test_check_status_warning_on_reload_required(requests):
     requests.get(BASE_URL + '?operation=read-attribute&name=server-state',
                  text='{"result":"reload-required"}')
     result = wf.check_server_status()
@@ -61,6 +61,3 @@ def test_check_status_with_domain(requests):
                  text='{"result":"running"}')
     result = wf.check_server_status()
     assert result == 0
-
-
-
