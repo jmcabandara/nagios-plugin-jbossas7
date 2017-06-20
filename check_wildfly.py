@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-""" 
+"""
 A Nagios script for checking Wildfly/JBossAS over HTTP
 
  Main Author
@@ -80,16 +80,16 @@ def _numeric_type(param):
     """
     Checks parameter type
     True for float; int or null data; false otherwise
-    
+
     :param param: input param to check
     """
-    return type(param) == float or type(param) == int or param is None
+    return isinstance(param, (float, int)) or param is None
 
 
 def _check_levels(param, warning, critical, message, ok=None):
     """
     Checks error level
-    
+
     :param param: input param
     :param warning: watermark for warning
     :param critical: watermark for critical
@@ -98,39 +98,39 @@ def _check_levels(param, warning, critical, message, ok=None):
     """
     if ok is None:
         ok = []
+
     if _numeric_type(critical) and _numeric_type(warning):
         if param >= critical:
             print("CRITICAL - " + message)
-            return 2
+            return_code = 2
         elif param >= warning:
             print("WARNING - " + message)
-            return 1
+            return_code = 1
         else:
             print("OK - " + message)
-            return 0
+            return_code = 0
     else:
         if param in critical:
             print("CRITICAL - " + message)
-            return 2
-
-        if param in warning:
+            return_code = 2
+        elif param in warning:
             print("WARNING - " + message)
-            return 1
-
-        if param in ok:
+            return_code = 1
+        elif param in ok:
             print("OK - " + message)
-            return 0
+            return_code = 0
+        else:
+            print("CRITICAL - Unexpected value : %s" % param + "; " + message)
+            return_code = 2
 
-        # unexpected param value
-        print("CRITICAL - Unexpected value : %s" % param + "; " + message)
-        return 2
+    return return_code
 
 
 def _get_digest_auth_json(uri, payload):
     """
     HTTP GET with Digest Authentication. Returns JSON result.
     Base URI of http://{host}:{port}/management is used
-    
+
     :param uri: URL fragment
     :param payload: URL parameter payload
     """
@@ -159,9 +159,9 @@ def _post_digest_auth_json(uri, payload):
     """
     HTTP POST with Digest Authentication. Returns JSON result.
     Base URI of http://{host}:{port}/management is used
-    
+
     :param uri: URL fragment
-    :param payload: JSON payload 
+    :param payload: JSON payload
     """
     try:
         url = _base_url(CONFIG['host'], CONFIG['port']) + uri
@@ -181,14 +181,13 @@ def _post_digest_auth_json(uri, payload):
         return data
     except Exception as exc:
         # The server could be down; make this CRITICAL.
-        print("CRITICAL - JbossAS Error:", exc)
+        print("CRITICAL - JbossAS Error during POST-Request:", exc)
         sys.exit(2)
 
 
 def _base_url(host, port):
     """
     Provides base URL for HTTP Management API
-    
     :param host: JBossAS hostname
     :param port: JBossAS HTTP Management Port
     """
@@ -211,44 +210,45 @@ def _debug_log():
 def main():
     logging.basicConfig()
     logging.getLogger().setLevel(logging.ERROR)
-    # debug_log()
+    # _debug_log()
 
-    p = optparse.OptionParser(conflict_handler="resolve",
-                              description="This Nagios plugin checks the health of JBossAS.")
+    parser = optparse.OptionParser(conflict_handler="resolve",
+                                   description="This Nagios plugin checks the health of JBossAS.")
 
-    p.add_option('-H', '--host', action='store', type='string', dest='host', default='127.0.0.1',
-                 help='The hostname you want to connect to')
-    p.add_option('-P', '--port', action='store', type='int', dest='port', default=9990,
-                 help='The port JBoss management console is runnung on')
-    p.add_option('-u', '--user', action='store', type='string', dest='user', default=None,
-                 help='The username you want to login as')
-    p.add_option('-p', '--pass', action='store', type='string', dest='passwd', default=None,
-                 help='The password you want to use for that user')
-    p.add_option('-M', '--mode', action="store", type='choice', dest='mode', default='standalone',
-                 help='The mode the server is running', choices=['standalone', 'domain'])
-    p.add_option('-n', '--node', action='store', type='string', dest='node', default=None,
-                 help='The wildfly node (host) this server is running (domain mode)')
-    p.add_option('-i', '--instance', action='store', type='string', dest='instance', default=None,
-                 help='The wildfly instance (server-config) to check (domain mode)')
-    p.add_option('-W', '--warning', action='store', dest='warning', default=None,
-                 help='The warning threshold we want to set')
-    p.add_option('-C', '--critical', action='store', dest='critical', default=None,
-                 help='The critical threshold we want to set')
-    p.add_option('-A', '--action', action='store', type='choice', dest='action', default='server_status',
-                 help='The action you want to take', choices=ACTIONS)
-    p.add_option('-D', '--perf-data', action='store_true', dest='perf_data', default=False,
-                 help='Enable output of Nagios performance data')
-    p.add_option('-m', '--memorypool', action='store', dest='memory_pool', default=None, help='The memory pool type')
-    p.add_option('-q', '--queuename', action='store', dest='queue_name', default=None,
-                 help='The queue name for which you want to retrieve queue depth')
-    p.add_option('-d', '--datasource', action='store', dest='datasource_name', default=None,
-                 help='The datasource name for which you want to retrieve statistics')
-    p.add_option('-s', '--poolstats', action='store', dest='ds_stat_type', default=None,
-                 help='The datasource pool statistics type')
-    p.add_option('-t', '--threadstats', action='store', dest='thread_stat_type', default=None,
-                 help='The threading statistics type')
+    parser.add_option('-H', '--host', action='store', type='string', dest='host', default='127.0.0.1',
+                      help='The hostname you want to connect to')
+    parser.add_option('-P', '--port', action='store', type='int', dest='port', default=9990,
+                      help='The port JBoss management console is runnung on')
+    parser.add_option('-u', '--user', action='store', type='string', dest='user', default=None,
+                      help='The username you want to login as')
+    parser.add_option('-p', '--pass', action='store', type='string', dest='passwd', default=None,
+                      help='The password you want to use for that user')
+    parser.add_option('-M', '--mode', action="store", type='choice', dest='mode', default='standalone',
+                      help='The mode the server is running', choices=['standalone', 'domain'])
+    parser.add_option('-n', '--node', action='store', type='string', dest='node', default=None,
+                      help='The wildfly node (host) this server is running (domain mode)')
+    parser.add_option('-i', '--instance', action='store', type='string', dest='instance', default=None,
+                      help='The wildfly instance (server-config) to check (domain mode)')
+    parser.add_option('-W', '--warning', action='store', dest='warning', default=None,
+                      help='The warning threshold we want to set')
+    parser.add_option('-C', '--critical', action='store', dest='critical', default=None,
+                      help='The critical threshold we want to set')
+    parser.add_option('-A', '--action', action='store', type='choice', dest='action', default='server_status',
+                      help='The action you want to take', choices=ACTIONS)
+    parser.add_option('-D', '--perf-data', action='store_true', dest='perf_data', default=False,
+                      help='Enable output of Nagios performance data')
+    parser.add_option('-m', '--memorypool', action='store', dest='memory_pool', default=None,
+                      help='The memory pool type')
+    parser.add_option('-q', '--queuename', action='store', dest='queue_name', default=None,
+                      help='The queue name for which you want to retrieve queue depth')
+    parser.add_option('-d', '--datasource', action='store', dest='datasource_name', default=None,
+                      help='The datasource name for which you want to retrieve statistics')
+    parser.add_option('-s', '--poolstats', action='store', dest='ds_stat_type', default=None,
+                      help='The datasource pool statistics type')
+    parser.add_option('-t', '--threadstats', action='store', dest='thread_stat_type', default=None,
+                      help='The threading statistics type')
 
-    options, arguments = p.parse_args()
+    options, arguments = parser.parse_args()
     CONFIG['host'] = options.host
     CONFIG['port'] = options.port
     CONFIG['user'] = options.user
@@ -259,11 +259,6 @@ def main():
 
     args = {
         'perf_data': options.perf_data,
-        'queue_name:': options.queue_name,
-        'memory_pool': options.memory_pool,
-        'datasource_name': options.datasource_name,
-        'ds_stat_type': options.ds_stat_type,
-        'thread_stat_type': options.thread_stat_type
     }
 
     if options.action == 'server_status':
@@ -273,34 +268,28 @@ def main():
         args['warning'] = float(options.warning or 0)
         args['critical'] = float(options.critical or 0)
 
-    action = options.action
-    if action == "server_status":
-        result = check_server_status(**args)
-    elif action == "gctime":
-        result = check_gctime(**args)
-    elif action == "queue_depth":
-        result = check_queue_depth(**args)
-    elif action == "heap_usage":
-        result = check_heap_usage(**args)
-    elif action == "non_heap_usage":
-        result = check_non_heap_usage(**args)
-    elif action == "eden_space_usage":
-        result = check_eden_space_usage(**args)
-    elif action == "old_gen_usage":
-        result = check_old_gen_usage(**args)
-    elif action == "perm_gen_usage":
-        result = check_perm_gen_usage(**args)
-    elif action == "code_cache_usage":
-        result = check_code_cache_usage(**args)
-    elif action == "datasource":
-        result = check_non_xa_datasource(**args)
-    elif action == "xa_datasource":
-        result = check_xa_datasource(**args)
-    elif action == "threading":
-        result = check_threading(**args)
-    else:
-        result = 2
-    sys.exit(result)
+    actions = {
+        'server_status': lambda arg: check_server_status(**arg),
+        'gc_time': lambda arg: check_gctime(memory_pool=options.memory_pool, **arg),
+        'queue_depth': lambda arg: check_queue_depth(queue_name=options.queue_name, **arg),
+        'heap_usage': lambda arg: check_heap_usage(**arg),
+        'non_heap_usage': lambda arg: check_non_heap_usage(**arg),
+        'eden_space_usage': lambda arg: check_eden_space_usage(memory_pool=options.memory_pool, **arg),
+        'olg_gen_usage': lambda arg: check_old_gen_usage(memory_pool=options.memory_pool, **arg),
+        'perm_gen_usage': lambda arg: check_old_gen_usage(memory_pool=options.memory_pool, **arg),
+        'code_cache_usage': lambda arg: check_code_cache_usage(memory_pool=options.memory_pool, **arg),
+        'datasource': lambda arg: check_non_xa_datasource(
+            ds_name=options.datasource_name, ds_stat_type=options.ds_stat_type, **arg),
+        'xa_datasource': lambda arg: check_xa_datasource(
+            ds_name=options.datasource_name, ds_stat_type=options.ds_stat_type, **arg),
+        'threading': lambda arg: check_threading(
+            thread_stat_type=options.thread_stat_type, **arg),
+    }
+
+    if options.action in actions:
+        return actions[options.action](args)
+
+    return 2
 
 
 def _is_domain():
@@ -309,7 +298,6 @@ def _is_domain():
 
 def _exit_with_general_warning(exc):
     """
-    
     :param exc: exception
     """
     if isinstance(exc, SystemExit):
@@ -327,7 +315,7 @@ def _exit_with_general_critical(exc):
     return 2
 
 
-def check_server_status(warning=None, critical="", perf_data=None, **kwargs):
+def check_server_status(warning=None, critical="", perf_data=None):
     ok = ["running"]
     warning = warning or ["restart-required", "reload-required"]
 
@@ -337,7 +325,7 @@ def check_server_status(warning=None, critical="", perf_data=None, **kwargs):
         if _is_domain():
             url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
-        res = _get_digest_auth_json(url, payload)
+        res = _post_digest_auth_json(url, payload)
         res = res['result']
 
         message = "Server Status '%s'" % res
@@ -348,7 +336,7 @@ def check_server_status(warning=None, critical="", perf_data=None, **kwargs):
         return _exit_with_general_critical(exc)
 
 
-def get_memory_usage(is_heap, memory_value, **kwargs):
+def get_memory_usage(is_heap, memory_value):
     try:
         payload = {'include-runtime': 'true'}
         url = "/core-service/platform-mbean/type/memory"
@@ -368,7 +356,7 @@ def get_memory_usage(is_heap, memory_value, **kwargs):
         return _exit_with_general_critical(exc)
 
 
-def check_heap_usage(warning, critical, perf_data, **kwargs):
+def check_heap_usage(warning, critical, perf_data):
     warning = warning or 80
     critical = critical or 90
 
@@ -385,7 +373,7 @@ def check_heap_usage(warning, critical, perf_data, **kwargs):
         return _exit_with_general_critical(exc)
 
 
-def check_non_heap_usage(warning, critical, perf_data, **kwargs):
+def check_non_heap_usage(warning, critical, perf_data):
     warning = warning or 80
     critical = critical or 90
 
@@ -402,7 +390,7 @@ def check_non_heap_usage(warning, critical, perf_data, **kwargs):
         return _exit_with_general_critical(exc)
 
 
-def get_memory_pool_usage(pool_name, memory_value, **kwargs):
+def get_memory_pool_usage(pool_name, memory_value):
     try:
         payload = {'include-runtime': 'true', 'recursive': 'true'}
         url = "/core-service/platform-mbean/type/memory-pool"
@@ -418,7 +406,7 @@ def get_memory_pool_usage(pool_name, memory_value, **kwargs):
         return _exit_with_general_critical(exc)
 
 
-def check_eden_space_usage(memory_pool, warning, critical, perf_data, **kwargs):
+def check_eden_space_usage(memory_pool, warning, critical, perf_data):
     warning = warning or 80
     critical = critical or 90
 
@@ -435,7 +423,7 @@ def check_eden_space_usage(memory_pool, warning, critical, perf_data, **kwargs):
         return _exit_with_general_critical(exc)
 
 
-def check_old_gen_usage(memory_pool, warning, critical, perf_data, **kwargs):
+def check_old_gen_usage(memory_pool, warning, critical, perf_data):
     warning = warning or 80
     critical = critical or 90
 
@@ -452,7 +440,7 @@ def check_old_gen_usage(memory_pool, warning, critical, perf_data, **kwargs):
         return _exit_with_general_critical(exc)
 
 
-def check_perm_gen_usage(memory_pool, warning, critical, perf_data, **kwargs):
+def check_perm_gen_usage(memory_pool, warning, critical, perf_data):
     warning = warning or 90
     critical = critical or 95
 
@@ -469,7 +457,7 @@ def check_perm_gen_usage(memory_pool, warning, critical, perf_data, **kwargs):
         return _exit_with_general_critical(exc)
 
 
-def check_code_cache_usage(memory_pool, warning, critical, perf_data, **kwargs):
+def check_code_cache_usage(memory_pool, warning, critical, perf_data):
     warning = warning or 90
     critical = critical or 95
 
@@ -489,8 +477,8 @@ def check_code_cache_usage(memory_pool, warning, critical, perf_data, **kwargs):
         return _exit_with_general_critical(exc)
 
 
-def check_gctime(memory_pool, warning, critical, perf_data, **kwargs):
-    # Make sure you configure right values for your application    
+def check_gctime(memory_pool, warning, critical, perf_data):
+    # Make sure you configure right values for your application
     warning = warning or 500
     critical = critical or 1000
 
@@ -518,7 +506,7 @@ def check_gctime(memory_pool, warning, critical, perf_data, **kwargs):
         return _exit_with_general_critical(exc)
 
 
-def check_threading(thread_stat_type, warning, critical, perf_data, **kwargs):
+def check_threading(thread_stat_type, warning, critical, perf_data):
     warning = warning or 100
     critical = critical or 200
 
@@ -545,7 +533,7 @@ def check_threading(thread_stat_type, warning, critical, perf_data, **kwargs):
         return _exit_with_general_critical(exc)
 
 
-def check_queue_depth(queue_name, warning, critical, perf_data, **kwargs):
+def check_queue_depth(queue_name, warning, critical, perf_data):
     warning = warning or 100
     critical = critical or 200
 
@@ -594,7 +582,7 @@ def get_datasource_stats(is_xa, ds_name, ds_stat_type):
         return _exit_with_general_critical(exc)
 
 
-def check_non_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data, **kwargs):
+def check_non_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data):
     warning = warning or 0
     critical = critical or 10
 
@@ -608,7 +596,7 @@ def check_non_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data,
         return _exit_with_general_critical(exc)
 
 
-def check_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data, **kwargs):
+def check_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data):
     warning = warning or 0
     critical = critical or 10
 
@@ -620,6 +608,7 @@ def check_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data, **k
         return _check_levels(data, warning, critical, message)
     except Exception as exc:
         return _exit_with_general_critical(exc)
+
 
 #
 # main app
