@@ -19,7 +19,7 @@ def requests():
 
 def test_check_status_ok(requests):
     requests.post(BASE_URL,
-                  text='{"result":"running"}')
+                 text='{"result":"running"}')
     result = wf.check_server_status()
     assert result == 0
 

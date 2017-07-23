@@ -37,7 +37,7 @@ DS_STAT_TYPES = ['ActiveCount', 'AvailableCount', 'AverageBlockingTime', 'Averag
 
 ACTIONS = ['server_status', 'heap_usage', 'non_heap_usage', 'eden_space_usage',
            'old_gen_usage', 'perm_gen_usage', 'code_cache_usage', 'gctime',
-           'queue_depth', 'datasource', 'xa_datasource', 'threading']
+           'queue_depth', 'datasource', 'xa_datasource', 'threading', "deployment_status"]
 
 
 #
@@ -138,21 +138,12 @@ def _get_digest_auth_json(uri, payload):
         url = _base_url(CONFIG['host'], CONFIG['port']) + uri
         auth = HTTPDigestAuth(CONFIG['user'], CONFIG['password'])
         res = requests.get(url, params=payload, auth=auth)
-        data = res.json()
+        res.raise_for_status()
+        return res.json()
 
-        try:
-            outcome = data['outcome']
-            if outcome == "failed":
-                print("CRITICAL - Unexpected value : %s" % data)
-                sys.exit(2)
-        except KeyError:
-            pass
-
-        return data
-    except Exception as exc:
-        # The server could be down; make this CRITICAL.
-        print("CRITICAL - JbossAS Error:", exc)
-        sys.exit(2)
+    except requests.HTTPError as exc:
+        print("UNKNOWN:", exc)
+        sys.exit(-1)
 
 
 def _post_digest_auth_json(uri, payload):
@@ -179,10 +170,9 @@ def _post_digest_auth_json(uri, payload):
             pass
 
         return data
-    except Exception as exc:
-        # The server could be down; make this CRITICAL.
-        print("CRITICAL - JbossAS Error during POST-Request:", exc)
-        sys.exit(2)
+    except requests.HTTPError as exc:
+        print("UNKNOWN:", exc)
+        sys.exit(-1)
 
 
 def _base_url(host, port):
@@ -210,7 +200,7 @@ def _debug_log():
 def main():
     logging.basicConfig()
     logging.getLogger().setLevel(logging.ERROR)
-    # _debug_log()
+    _debug_log()
 
     parser = optparse.OptionParser(conflict_handler="resolve",
                                    description="This Nagios plugin checks the health of JBossAS.")
@@ -270,6 +260,7 @@ def main():
 
     actions = {
         'server_status': lambda arg: check_server_status(**arg),
+        'deployment_status': lambda arg: check_deployment_status(**arg),
         'gc_time': lambda arg: check_gctime(memory_pool=options.memory_pool, **arg),
         'queue_depth': lambda arg: check_queue_depth(queue_name=options.queue_name, **arg),
         'heap_usage': lambda arg: check_heap_usage(**arg),
@@ -313,6 +304,36 @@ def _exit_with_general_critical(exc):
 
     print("CRITICAL - General JbossAS Error:", exc)
     return 2
+
+
+def check_deployment_status(warning=None, critical=None):
+    critical = critical or "FAILED"
+    warning = warning or ["STOPPED"]
+    ok = ["OK"]
+    try:
+        url = '/deployment/*'
+        payload = {'operation': 'attribute', 'name': 'status'}
+        if _is_domain():
+            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
+
+        res = _get_digest_auth_json(url, payload)
+
+        deployments = {}
+        message = ''
+        return_code = 0;
+        for result in res:
+            deployment = next(iter(result.get('address') or []), {}).get('deployment')
+            status = result.get('result')
+            deployments[deployment] = status
+            return_code = max([return_code, _check_levels(status, warning, critical, deployment + ': ' + status, ok)])
+        message = "Deployment status '%s'" % str(deployments)
+        print(message)
+
+        return return_code
+
+    except Exception as exc:
+        print(exc)
+        return _exit_with_general_critical(exc)
 
 
 def check_server_status(warning=None, critical="", perf_data=None):
