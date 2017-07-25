@@ -195,7 +195,7 @@ def _debug_log():
 def main():
     logging.basicConfig()
     logging.getLogger().setLevel(logging.ERROR)
-    #_debug_log()
+    # _debug_log()
 
     parser = optparse.OptionParser(conflict_handler="resolve",
                                    description="This Nagios plugin checks the health of JBossAS.")
@@ -343,14 +343,14 @@ def check_server_status(ok=None, warning=None, critical=None):
     critical = critical or ["stopped"]
 
     url = ''
-    payload = {'operation': 'read-attribute', 'name': 'server-state'}
+    payload = {'operation': 'attribute', 'name': 'server-state'}
     if _is_domain():
         url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
     response = _get_digest_auth_json(url, payload)
-    res = response['result']
-    message = "Server Status '{0}'".format(res)
-    status = _check_levels(res, warning, critical, ok)
+
+    message = "Server Status '{0}'".format(response)
+    status = _check_levels(response, warning, critical, ok)
     _print_status(status, message)
     return status
 
