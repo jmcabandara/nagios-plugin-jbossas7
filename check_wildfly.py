@@ -35,9 +35,13 @@ DS_STAT_TYPES = ['ActiveCount', 'AvailableCount', 'AverageBlockingTime', 'Averag
                  'CreatedCount', 'DestroyedCount', 'MaxCreationTime', 'MaxUsedCount',
                  'MaxWaitTime', 'TimedOut', 'TotalBlockingTime', 'TotalCreationTime']
 
+THREAD_STAT_TYPES = ['thread-count', 'peak-thread-count', 'total-started-thread-count', 'daemon-thread-count']
+
 ACTIONS = ['server_status', 'heap_usage', 'non_heap_usage', 'eden_space_usage',
-           'old_gen_usage', 'perm_gen_usage', 'code_cache_usage', 'gctime',
+           'old_gen_usage', 'perm_gen_usage', 'code_cache_usage', 'gc_time',
            'queue_depth', 'datasource', 'xa_datasource', 'threading', "deployment_status"]
+
+NAGIOS_STATUS = {-1: 'UNKNOWN', 0: 'OK', 1: 'WARNING', 2: 'CRITICAL'}
 
 
 #
@@ -62,7 +66,7 @@ def _performance_data(perf_data, params):
     if not perf_data:
         return ''
 
-    data = " |"
+    data = ""
     for param in params:
         param += (None, None, None, None)
         param_value, param_name, warning, critical = param[0:4]
@@ -86,7 +90,7 @@ def _numeric_type(param):
     return isinstance(param, (float, int)) or param is None
 
 
-def _check_levels(param, warning, critical, message, ok=None):
+def _check_levels(param, warning, critical, ok=None):
     """
     Checks error level
 
@@ -96,32 +100,23 @@ def _check_levels(param, warning, critical, message, ok=None):
     :param message: message to be reported to nagios
     :param ok: watermark for ok level
     """
-    if ok is None:
-        ok = []
 
     if _numeric_type(critical) and _numeric_type(warning):
-        if param >= critical:
-            print("CRITICAL - " + message)
+        if param >= critical != -1:
             return_code = 2
-        elif param >= warning:
-            print("WARNING - " + message)
+        elif param >= warning != -1:
             return_code = 1
         else:
-            print("OK - " + message)
             return_code = 0
     else:
         if param in critical:
-            print("CRITICAL - " + message)
             return_code = 2
         elif param in warning:
-            print("WARNING - " + message)
             return_code = 1
-        elif param in ok:
-            print("OK - " + message)
+        elif ok is None or param in ok:
             return_code = 0
         else:
-            print("CRITICAL - Unexpected value : %s" % param + "; " + message)
-            return_code = 2
+            return_code = -1
 
     return return_code
 
@@ -236,7 +231,7 @@ def main():
     parser.add_option('-s', '--poolstats', action='store', dest='ds_stat_type', default=None,
                       help='The datasource pool statistics type')
     parser.add_option('-t', '--threadstats', action='store', dest='thread_stat_type', default=None,
-                      help='The threading statistics type')
+                      help='The threading statistics type', choices=THREAD_STAT_TYPES)
 
     options, arguments = parser.parse_args()
     CONFIG['host'] = options.host
@@ -306,196 +301,184 @@ def _exit_with_general_critical(exc):
     return 2
 
 
+def _print_status(status, message, perf_data=None):
+    if perf_data:
+        print("{0} - {1} | {2}".format(NAGIOS_STATUS[status], message, perf_data))
+    else:
+        print("{0} - {1}".format(NAGIOS_STATUS[status], message))
+
+
 def check_deployment_status(warning=None, critical=None):
     critical = critical or "FAILED"
     warning = warning or ["STOPPED"]
-    ok = ["OK"]
-    try:
-        url = '/deployment/*'
-        payload = {'operation': 'attribute', 'name': 'status'}
-        if _is_domain():
-            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
+    ok = ["OK", "RUNNING"]
 
-        res = _get_digest_auth_json(url, payload)
+    url = '/deployment/*'
+    payload = {'operation': 'attribute', 'name': 'status'}
+    if _is_domain():
+        url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
-        deployments = {}
-        message = ''
-        return_code = 0;
-        for result in res:
-            deployment = next(iter(result.get('address') or []), {}).get('deployment')
-            status = result.get('result')
-            deployments[deployment] = status
-            return_code = max([return_code, _check_levels(status, warning, critical, deployment + ': ' + status, ok)])
-        message = "Deployment status '%s'" % str(deployments)
-        print(message)
+    res = _get_digest_auth_json(url, payload)
 
-        return return_code
+    deployments = dict()
+    return_code = 0
+    for result in res:
+        deployment = next(iter(result.get('address') or []), {}).get('deployment')
+        status = result.get('result')
+        deployments[deployment] = status
+        deployment_status = _check_levels(status, warning, critical, ok)
+        return_code = max([return_code, deployment_status])
 
-    except Exception as exc:
-        print(exc)
-        return _exit_with_general_critical(exc)
+    _print_status(return_code, '%d Deployments checked' % len(deployments))
+    for deployment, status in deployments.items():
+        print("%s is %s" % (deployment, status))
+
+    return return_code
 
 
-def check_server_status(warning=None, critical="", perf_data=None):
-    ok = ["running"]
+def check_server_status(ok=None, warning=None, critical=None):
+    ok = ok or ["running"]
     warning = warning or ["restart-required", "reload-required"]
+    critical = critical or ["stopped"]
 
-    try:
-        url = ''
-        payload = {'operation': 'read-attribute', 'name': 'server-state'}
-        if _is_domain():
-            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
+    url = ''
+    payload = {'operation': 'read-attribute', 'name': 'server-state'}
+    if _is_domain():
+        url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
-        res = _post_digest_auth_json(url, payload)
-        res = res['result']
-
-        message = "Server Status '%s'" % res
-        message += _performance_data(perf_data, [(res, "server_status", warning, critical)])
-
-        return _check_levels(res, warning, critical, message, ok)
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    response = _post_digest_auth_json(url, payload)
+    res = response['result']
+    message = "Server Status '{0}'".format(res)
+    status = _check_levels(res, warning, critical, ok)
+    _print_status(status, message)
+    return status
 
 
 def get_memory_usage(is_heap, memory_value):
-    try:
-        payload = {'include-runtime': 'true'}
-        url = "/core-service/platform-mbean/type/memory"
+    payload = {'include-runtime': 'true'}
+    url = "/core-service/platform-mbean/type/memory"
 
-        if _is_domain():
-            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
+    if _is_domain():
+        url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
-        data = _get_digest_auth_json(url, payload)
+    data = _get_digest_auth_json(url, payload)
 
-        if is_heap:
-            data = data['heap-memory-usage'][memory_value] / (1024 * 1024)
-        else:
-            data = data['non-heap-memory-usage'][memory_value] / (1024 * 1024)
+    if is_heap:
+        data = data['heap-memory-usage'][memory_value] / (1024 * 1024)
+    else:
+        data = data['non-heap-memory-usage'][memory_value] / (1024 * 1024)
 
-        return data
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    return data
 
 
 def check_heap_usage(warning, critical, perf_data):
     warning = warning or 80
     critical = critical or 90
 
-    try:
-        used_heap = get_memory_usage(True, 'used')
-        max_heap = get_memory_usage(True, 'max')
-        percent = round((float(used_heap * 100) / max_heap), 2)
+    # FIXME: this does the http call twice
+    used_heap = get_memory_usage(True, 'used')
+    max_heap = get_memory_usage(True, 'max')
+    percent = round((float(used_heap * 100) / max_heap), 2)
 
-        message = "Heap Memory Utilization %.2f MB of %.2f MB" % (used_heap, max_heap)
-        message += _performance_data(perf_data, [("%.2f%%" % percent, "heap_usage", warning, critical)])
+    message = "Heap Memory Utilization %.2f MB of %.2f MB" % (used_heap, max_heap)
+    perf_data = _performance_data(perf_data, [("%.2f%%" % percent, "heap_usage", warning, critical)])
 
-        return _check_levels(percent, warning, critical, message)
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    status = _check_levels(percent, warning, critical)
+    _print_status(status, message, perf_data)
+    return status
 
 
-def check_non_heap_usage(warning, critical, perf_data):
-    warning = warning or 80
-    critical = critical or 90
+def check_non_heap_usage(warning=80, critical=90, perf_data=True):
+    used_heap = get_memory_usage(False, 'used')
+    max_heap = get_memory_usage(False, 'max')
+    percent = round((float(used_heap * 100) / max_heap), 2)
 
-    try:
-        used_heap = get_memory_usage(False, 'used')
-        max_heap = get_memory_usage(False, 'max')
-        percent = round((float(used_heap * 100) / max_heap), 2)
+    message = "Non Heap Memory Utilization %.2f MB of %.2f MB" % (used_heap, max_heap)
+    perf_data = _performance_data(perf_data, [("%.2f%%" % percent, "non_heap_usage", warning, critical)])
 
-        message = "Non Heap Memory Utilization %.2f MB of %.2f MB" % (used_heap, max_heap)
-        message += _performance_data(perf_data, [("%.2f%%" % percent, "non_heap_usage", warning, critical)])
-
-        return _check_levels(percent, warning, critical, message)
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    status = _check_levels(percent, warning, critical)
+    _print_status(status, message, perf_data)
+    return status
 
 
 def get_memory_pool_usage(pool_name, memory_value):
-    try:
-        payload = {'include-runtime': 'true', 'recursive': 'true'}
-        url = "/core-service/platform-mbean/type/memory-pool"
+    payload = {'include-runtime': 'true', 'recursive': 'true'}
+    url = "/core-service/platform-mbean/type/memory-pool"
 
-        if _is_domain():
-            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
+    if _is_domain():
+        url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
-        data = _get_digest_auth_json(url, payload)
-        usage = data['name'][pool_name]['usage'][memory_value] / (1024 * 1024)
+    data = _get_digest_auth_json(url, payload)
+    usage = data['name'][pool_name]['usage'][memory_value] / (1024 * 1024)
 
-        return usage
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    return usage
 
 
 def check_eden_space_usage(memory_pool, warning, critical, perf_data):
     warning = warning or 80
     critical = critical or 90
 
-    try:
-        used_heap = get_memory_pool_usage(memory_pool, 'used')
-        max_heap = get_memory_pool_usage(memory_pool, 'max')
-        percent = round((float(used_heap * 100) / max_heap), 2)
+    used_heap = get_memory_pool_usage(memory_pool, 'used')
+    max_heap = get_memory_pool_usage(memory_pool, 'max')
+    percent = round((float(used_heap * 100) / max_heap), 2)
 
-        message = "Eden_Space Utilization %sMB of %sMB" % (used_heap, max_heap)
-        message += _performance_data(perf_data, [("%.2f%%" % percent, "eden_space_usage", warning, critical)])
+    message = "Eden_Space Utilization %sMB of %sMB" % (used_heap, max_heap)
+    perf_data = _performance_data(perf_data, [("%.2f%%" % percent, "eden_space_usage", warning, critical)])
 
-        return _check_levels(percent, warning, critical, message)
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    status = _check_levels(percent, warning, critical)
+    _print_status(status, message, perf_data)
+    return status
 
 
 def check_old_gen_usage(memory_pool, warning, critical, perf_data):
     warning = warning or 80
     critical = critical or 90
 
-    try:
-        used_heap = get_memory_pool_usage(memory_pool, 'used')
-        max_heap = get_memory_pool_usage(memory_pool, 'max')
-        percent = round((float(used_heap * 100) / max_heap), 2)
+    used_heap = get_memory_pool_usage(memory_pool, 'used')
+    max_heap = get_memory_pool_usage(memory_pool, 'max')
+    percent = round((float(used_heap * 100) / max_heap), 2)
 
-        message = "Old_Gen Utilization %sMB of %sMB" % (used_heap, max_heap)
-        message += _performance_data(perf_data, [("%.2f%%" % percent, "old_gen_usage", warning, critical)])
+    message = "Old_Gen Utilization %sMB of %sMB" % (used_heap, max_heap)
+    perf_data = _performance_data(perf_data, [("%.2f%%" % percent, "old_gen_usage", warning, critical)])
 
-        return _check_levels(percent, warning, critical, message)
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    status = _check_levels(percent, warning, critical)
+    _print_status(status, message, perf_data)
+    return status
 
 
 def check_perm_gen_usage(memory_pool, warning, critical, perf_data):
     warning = warning or 90
     critical = critical or 95
 
-    try:
-        used_heap = get_memory_pool_usage(memory_pool, 'used')
-        max_heap = get_memory_pool_usage(memory_pool, 'max')
-        percent = round((float(used_heap * 100) / max_heap), 2)
+    used_heap = get_memory_pool_usage(memory_pool, 'used')
+    max_heap = get_memory_pool_usage(memory_pool, 'max')
+    percent = round((float(used_heap * 100) / max_heap), 2)
 
-        message = "Perm_Gen Utilization %sMB of %sMB" % (used_heap, max_heap)
-        message += _performance_data(perf_data, [("%.2f%%" % percent, "perm_gen_usage", warning, critical)])
+    message = "Perm_Gen Utilization %sMB of %sMB" % (used_heap, max_heap)
+    perf_data = _performance_data(perf_data, [("%.2f%%" % percent, "perm_gen_usage", warning, critical)])
 
-        return _check_levels(percent, warning, critical, message)
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    status = _check_levels(percent, warning, critical)
+    _print_status(status, message, perf_data)
+    return status
 
 
 def check_code_cache_usage(memory_pool, warning, critical, perf_data):
     warning = warning or 90
     critical = critical or 95
 
-    try:
-        if memory_pool is None:
-            memory_pool = 'Code_Cache'
+    if memory_pool is None:
+        memory_pool = 'Code_Cache'
 
-        used_heap = get_memory_pool_usage(memory_pool, 'used')
-        max_heap = get_memory_pool_usage(memory_pool, 'max')
-        percent = round((float(used_heap * 100) / max_heap), 2)
+    used_heap = get_memory_pool_usage(memory_pool, 'used')
+    max_heap = get_memory_pool_usage(memory_pool, 'max')
+    percent = round((float(used_heap * 100) / max_heap), 2)
 
-        message = "Code_Cache Utilization %.2f MB of %.2f MB" % (used_heap, max_heap)
-        message += _performance_data(perf_data, [("%.2f%%" % percent, "code_cache_usage", warning, critical)])
+    message = "Code_Cache Utilization %.2f MB of %.2f MB" % (used_heap, max_heap)
+    perf_data = _performance_data(perf_data, [("%.2f%%" % percent, "code_cache_usage", warning, critical)])
 
-        return _check_levels(percent, warning, critical, message)
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    status = _check_levels(percent, warning, critical)
+    _print_status(status, message, perf_data)
+    return status
 
 
 def check_gctime(memory_pool, warning, critical, perf_data):
@@ -503,132 +486,120 @@ def check_gctime(memory_pool, warning, critical, perf_data):
     warning = warning or 500
     critical = critical or 1000
 
-    try:
-        payload = {'include-runtime': 'true', 'recursive': 'true'}
-        url = "/core-service/platform-mbean/type/garbage-collector"
+    payload = {'include-runtime': 'true', 'recursive': 'true'}
+    url = "/core-service/platform-mbean/type/garbage-collector"
 
-        if _is_domain():
-            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
+    if _is_domain():
+        url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
-        res = _get_digest_auth_json(url, payload)
-        gc_time = res['name'][memory_pool]['collection-time']
-        gc_count = res['name'][memory_pool]['collection-count']
+    res = _get_digest_auth_json(url, payload)
 
-        avg_gc_time = 0
+    gc_time = res['name'][memory_pool]['collection-time']
+    gc_count = res['name'][memory_pool]['collection-count']
 
-        if gc_count > 0:
-            avg_gc_time = float(gc_time / gc_count)
+    avg_gc_time = 0
 
-        message = "GC '%s' total-time=%dms count=%s avg-time=%.2fms" % (memory_pool, gc_time, gc_count, avg_gc_time)
-        message += _performance_data(perf_data, [("%.2fms" % avg_gc_time, "gctime", warning, critical)])
+    if gc_count > 0:
+        avg_gc_time = float(gc_time / gc_count)
 
-        return _check_levels(avg_gc_time, warning, critical, message)
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    message = "GC '%s' total-time=%dms count=%s avg-time=%.2fms" % (memory_pool, gc_time, gc_count, avg_gc_time)
+    perf_data = _performance_data(perf_data, [("%.2fms" % avg_gc_time, "gctime", warning, critical)])
+
+    status = _check_levels(avg_gc_time, warning, critical, message)
+    _print_status(status, message, perf_data)
+    return status
 
 
 def check_threading(thread_stat_type, warning, critical, perf_data):
     warning = warning or 100
     critical = critical or 200
 
-    try:
-        if thread_stat_type not in ['thread-count', 'peak-thread-count', 'total-started-thread-count',
-                                    'daemon-thread-count']:
-            return _exit_with_general_critical(
-                "The thread statistics value type of '%s' is not valid" % thread_stat_type)
+    payload = {'include-runtime': 'true'}
+    url = "/core-service/platform-mbean/type/threading"
 
-        payload = {'include-runtime': 'true'}
-        url = "/core-service/platform-mbean/type/threading"
+    if _is_domain():
+        url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
-        if _is_domain():
-            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
+    data = _get_digest_auth_json(url, payload)
+    data = data[thread_stat_type]
 
-        data = _get_digest_auth_json(url, payload)
-        data = data[thread_stat_type]
+    message = "Threading Statistics '%s':%s " % (thread_stat_type, data)
+    perf_data = _performance_data(perf_data, [(data, "threading", warning, critical)])
 
-        message = "Threading Statistics '%s':%s " % (thread_stat_type, data)
-        message += _performance_data(perf_data, [(data, "threading", warning, critical)])
-
-        return _check_levels(data, warning, critical, message)
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    status = _check_levels(data, warning, critical)
+    _print_status(status, message, perf_data)
+    return status
 
 
 def check_queue_depth(queue_name, warning, critical, perf_data):
     warning = warning or 100
     critical = critical or 200
 
-    try:
-        if queue_name is None:
-            return _exit_with_general_critical("The queue name '%s' is not valid" % queue_name)
+    if queue_name is None:
+        return _exit_with_general_critical("The queue name '%s' is not valid" % queue_name)
 
-        payload = {'include-runtime': 'true', 'recursive': 'true'}
-        url = "/subsystem/messaging/hornetq-server/default/jms-queue/" + queue_name
+    payload = {'include-runtime': 'true', 'recursive': 'true'}
+    url = "/subsystem/messaging/hornetq-server/default/jms-queue/" + queue_name
 
-        if _is_domain():
-            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
+    if _is_domain():
+        url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
-        data = _get_digest_auth_json(url, payload)
-        queue_depth = data['message-count']
+    data = _get_digest_auth_json(url, payload)
+    queue_depth = data['message-count']
 
-        message = "Queue %s depth %s" % (queue_name, queue_depth)
-        message += _performance_data(perf_data, [(queue_depth, "queue_depth", warning, critical)])
+    message = "Queue %s depth %s" % (queue_name, queue_depth)
+    perf_data = _performance_data(perf_data, [(queue_depth, "queue_depth", warning, critical)])
 
-        return _check_levels(queue_depth, warning, critical, message)
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    status = _check_levels(queue_depth, warning, critical)
+    _print_status(status, message, perf_data)
+    return status
 
 
 def get_datasource_stats(is_xa, ds_name, ds_stat_type):
-    try:
-        if ds_name is None:
-            return _exit_with_general_critical("The ds_name name '%s' is not valid" % ds_name)
-        if ds_stat_type not in DS_STAT_TYPES:
-            return _exit_with_general_critical("The datasource statistics type of '%s' is not valid" % ds_stat_type)
+    if ds_name is None:
+        return _exit_with_general_critical("The ds_name name '%s' is not valid" % ds_name)
+    if ds_stat_type not in DS_STAT_TYPES:
+        return _exit_with_general_critical("The datasource statistics type of '%s' is not valid" % ds_stat_type)
 
-        payload = {'include-runtime': 'true', 'recursive': 'true'}
-        if is_xa:
-            url = "/subsystem/datasources/xa-data-source/" + ds_name + "/statistics/pool/"
-        else:
-            url = "/subsystem/datasources/data-source/" + ds_name + "/statistics/pool/"
+    payload = {'include-runtime': 'true', 'recursive': 'true'}
+    if is_xa:
+        url = "/subsystem/datasources/xa-data-source/" + ds_name + "/statistics/pool/"
+    else:
+        url = "/subsystem/datasources/data-source/" + ds_name + "/statistics/pool/"
 
-        if _is_domain():
-            url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
+    if _is_domain():
+        url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
-        data = _get_digest_auth_json(url, payload)
-        data = data[ds_stat_type]
+    data = _get_digest_auth_json(url, payload)
+    data = data[ds_stat_type]
 
-        return data
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    return data
 
 
 def check_non_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data):
     warning = warning or 0
     critical = critical or 10
 
-    try:
-        data = get_datasource_stats(False, ds_name, ds_stat_type)
+    data = get_datasource_stats(False, ds_name, ds_stat_type)
 
-        message = "DataSource %s %s" % (ds_stat_type, data)
-        message += _performance_data(perf_data, [(data, "datasource", warning, critical)])
-        return _check_levels(data, warning, critical, message)
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    message = "DataSource %s %s" % (ds_stat_type, data)
+    perf_data = _performance_data(perf_data, [(data, "datasource", warning, critical)])
+    status = _check_levels(data, warning, critical)
+    _print_status(status, message, perf_data)
+    return status
 
 
 def check_xa_datasource(ds_name, ds_stat_type, warning, critical, perf_data):
     warning = warning or 0
     critical = critical or 10
 
-    try:
-        data = get_datasource_stats(True, ds_name, ds_stat_type)
+    data = get_datasource_stats(True, ds_name, ds_stat_type)
 
-        message = "XA DataSource %s %s" % (ds_stat_type, data)
-        message += _performance_data(perf_data, [(data, "xa_datasource", warning, critical)])
-        return _check_levels(data, warning, critical, message)
-    except Exception as exc:
-        return _exit_with_general_critical(exc)
+    message = "XA DataSource %s %s" % (ds_stat_type, data)
+    perf_data = _performance_data(perf_data, [(data, "xa_datasource", warning, critical)])
+    status = _check_levels(data, warning, critical, message)
+    _print_status(status, message, perf_data)
+    return status
 
 
 #

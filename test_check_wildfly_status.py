@@ -19,7 +19,7 @@ def requests():
 
 def test_check_status_ok(requests):
     requests.post(BASE_URL,
-                 text='{"result":"running"}')
+                  text='{"result":"running"}')
     result = wf.check_server_status()
     assert result == 0
 
@@ -43,14 +43,6 @@ def test_check_status_critical(requests):
                   text='{"result":"stopped"}')
     result = wf.check_server_status()
     assert result == 2
-
-
-def test_performance_data(requests, capsys):
-    requests.post(BASE_URL,
-                  text='{"result":"running"}')
-    wf.check_server_status(perf_data=True)
-    out, err = capsys.readouterr()
-    assert '|server_status=running;' in str(out)
 
 
 def test_check_status_with_domain(requests):
