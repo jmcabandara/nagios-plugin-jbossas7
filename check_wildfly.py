@@ -389,7 +389,10 @@ def check_heap_usage(warning, critical, perf_data):
     return status
 
 
-def check_non_heap_usage(warning=80, critical=90, perf_data=True):
+def check_non_heap_usage(warning, critical, perf_data):
+    warning = warning or 80
+    critical = critical or 90
+
     used_heap = get_memory_usage(False, 'used')
     max_heap = get_memory_usage(False, 'max')
     percent = round((float(used_heap * 100) / max_heap), 2)
