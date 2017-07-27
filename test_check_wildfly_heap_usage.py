@@ -51,7 +51,7 @@ def test_check_heap_usage_performance_data(requests, capsys):
     requests.get(BASE_URL + '/core-service/platform-mbean/type/memory', text=json.dumps(HEAP_USAGE))
     result = wf.check_heap_usage(80, 90, True)
     out, err = capsys.readouterr()
-    assert '| heap_usage=419MB;791;890;256;989' in out
+    assert '| heap_usage=419MB;791.9;890.8875;256.0;989.875' in out
     assert result == 0
 
 
@@ -96,7 +96,8 @@ def test_check_non_heap_usage_performance_data(requests, capsys):
     requests.get(BASE_URL + '/core-service/platform-mbean/type/memory', text=json.dumps(HEAP_USAGE))
     result = wf.check_non_heap_usage(80, 90, True)
     out, err = capsys.readouterr()
-    assert '| non_heap_usage=207MB;409;460;2;512' in out
+    print(out)
+    assert '| non_heap_usage=207MB;409.6;460.8;2.4375;512.0' in out
     assert result == 0
 
 

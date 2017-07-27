@@ -70,13 +70,10 @@ def _performance_data(perf_data, params):
     for param in params:
         param += (None, None, None, None, None, None)
         param_value, param_name, warning, critical, min_value, max_value = param[0:6]
-        data += "%s=%s" % (param_name, str(param_value))
-        if warning or critical:
-            warning = warning or 0
-            critical = critical or 0
-            data += ";%s;%s" % (warning, critical)
-            if min_value is not None and max_value is not None:
-                data += ";%s;%s" % (min_value, max_value)
+        data += "{0}={1};{2};{3};{4};{5}".format(param_name, param_value,
+                                                 warning or "", critical or "",
+                                                 min_value or "", max_value or "")
+
         data += " "
     return data
 
@@ -385,11 +382,17 @@ def check_heap_usage(warning, critical, perf_data):
     percent = round((float(used_heap * 100) / max_heap), 2)
 
     message = "Heap Memory Utilization %.2f MB of %.2f MB" % (used_heap, max_heap)
-    perf_data = _performance_data(perf_data, [("%dMB" % used_heap, "heap_usage",
-                                               max_heap * warning / 100,
-                                               max_heap * critical / 100,
-                                               memory['init'],
-                                               max_heap)])
+    perf_data = _performance_data(perf_data,
+                                  [("%dMB" % used_heap, "heap_usage",
+                                    max_heap * warning / 100,
+                                    max_heap * critical / 100,
+                                    memory['init'],
+                                    max_heap),
+                                   ("%dMB" % memory['committed'], "heap_committed",
+                                    None,
+                                    None,
+                                    memory['init'],
+                                    max_heap)])
 
     status = _check_levels(percent, warning, critical)
     _print_status(status, message, perf_data)
@@ -409,6 +412,11 @@ def check_non_heap_usage(warning, critical, perf_data):
     perf_data = _performance_data(perf_data, [("%dMB" % used_heap, "non_heap_usage",
                                                max_heap * warning / 100,
                                                max_heap * critical / 100,
+                                               memory['init'],
+                                               max_heap),
+                                              ("%dMB" % memory['committed'], "non_heap_committed",
+                                               None,
+                                               None,
                                                memory['init'],
                                                max_heap)])
 
