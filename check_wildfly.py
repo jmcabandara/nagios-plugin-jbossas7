@@ -68,14 +68,15 @@ def _performance_data(perf_data, params):
 
     data = ""
     for param in params:
-        param += (None, None, None, None)
-        param_value, param_name, warning, critical = param[0:4]
+        param += (None, None, None, None, None, None)
+        param_value, param_name, warning, critical, min_value, max_value = param[0:6]
         data += "%s=%s" % (param_name, str(param_value))
         if warning or critical:
             warning = warning or 0
             critical = critical or 0
             data += ";%s;%s" % (warning, critical)
-
+            if min_value is not None and max_value is not None:
+                data += ";%s;%s" % (min_value, max_value)
         data += " "
     return data
 
@@ -355,7 +356,7 @@ def check_server_status(ok=None, warning=None, critical=None):
     return status
 
 
-def get_memory_usage(is_heap, memory_value):
+def get_memory_usage():
     payload = {'include-runtime': 'true'}
     url = "/core-service/platform-mbean/type/memory"
 
@@ -363,11 +364,13 @@ def get_memory_usage(is_heap, memory_value):
         url = '/host/{}/server/{}'.format(CONFIG['node'], CONFIG['instance']) + url
 
     data = _get_digest_auth_json(url, payload)
+    memory_types = ['heap-memory-usage', 'non-heap-memory-usage']
+    fields = ['init', 'used', 'committed', 'max']
 
-    if is_heap:
-        data = data['heap-memory-usage'][memory_value] / (1024 * 1024)
-    else:
-        data = data['non-heap-memory-usage'][memory_value] / (1024 * 1024)
+    for memory_type in memory_types:
+        for field in fields:
+            # convert to megabyte
+            data[memory_type][field] /= (1024 * 1024)
 
     return data
 
@@ -376,13 +379,17 @@ def check_heap_usage(warning, critical, perf_data):
     warning = warning or 80
     critical = critical or 90
 
-    # FIXME: this does the http call twice
-    used_heap = get_memory_usage(True, 'used')
-    max_heap = get_memory_usage(True, 'max')
+    memory = get_memory_usage()['heap-memory-usage']
+    used_heap = memory['used']
+    max_heap = memory['max']
     percent = round((float(used_heap * 100) / max_heap), 2)
 
     message = "Heap Memory Utilization %.2f MB of %.2f MB" % (used_heap, max_heap)
-    perf_data = _performance_data(perf_data, [("%.2f%%" % percent, "heap_usage", warning, critical)])
+    perf_data = _performance_data(perf_data, [("%dMB" % used_heap, "heap_usage",
+                                               max_heap * warning / 100,
+                                               max_heap * critical / 100,
+                                               memory['init'],
+                                               max_heap)])
 
     status = _check_levels(percent, warning, critical)
     _print_status(status, message, perf_data)
@@ -393,12 +400,17 @@ def check_non_heap_usage(warning, critical, perf_data):
     warning = warning or 80
     critical = critical or 90
 
-    used_heap = get_memory_usage(False, 'used')
-    max_heap = get_memory_usage(False, 'max')
+    memory = get_memory_usage()['non-heap-memory-usage']
+    used_heap = memory['used']
+    max_heap = memory['max']
     percent = round((float(used_heap * 100) / max_heap), 2)
 
     message = "Non Heap Memory Utilization %.2f MB of %.2f MB" % (used_heap, max_heap)
-    perf_data = _performance_data(perf_data, [("%.2f%%" % percent, "non_heap_usage", warning, critical)])
+    perf_data = _performance_data(perf_data, [("%dMB" % used_heap, "non_heap_usage",
+                                               max_heap * warning / 100,
+                                               max_heap * critical / 100,
+                                               memory['init'],
+                                               max_heap)])
 
     status = _check_levels(percent, warning, critical)
     _print_status(status, message, perf_data)
