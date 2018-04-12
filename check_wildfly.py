@@ -322,7 +322,7 @@ def check_deployment_status(warning=None, critical=None):
     deployments = dict()
     return_code = 0
     for result in res:
-        deployment = next(iter(result.get('address') or []), {}).get('deployment')
+        deployment = { k: v for d in result.get('address') for k, v in d.items() }.get('deployment')
         status = result.get('result')
         deployments[deployment] = status
         deployment_status = _check_levels(status, warning, critical, ok)
