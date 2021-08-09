@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import check_wildfly as wf
 import requests_mock
 import pytest
