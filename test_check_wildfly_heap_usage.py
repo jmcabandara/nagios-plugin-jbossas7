@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import copy
 
 import check_wildfly as wf
